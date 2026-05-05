@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveNutritionUiState } from "./ui-state";
+import { deriveNutritionUiState, resolveEditableNutritionProfile } from "./ui-state";
 import type { NutritionProfile, NutritionSnapshot } from "./nutrition-service";
 
 const defaultProfile: NutritionProfile = {
@@ -58,5 +58,20 @@ describe("deriveNutritionUiState", () => {
 
     expect(state.screen).toBe("onboarding");
     expect(state.onboardingDraft).toEqual({ ...defaultProfile, email: "zohan@example.com" });
+  });
+});
+
+describe("resolveEditableNutritionProfile", () => {
+  it("prefers the current draft while editing settings over the last saved profile", () => {
+    const editedDraft: NutritionProfile = {
+      ...savedProfile,
+      calorieTarget: 2000,
+    };
+
+    expect(resolveEditableNutritionProfile({ profile: savedProfile, draft: editedDraft })).toEqual(editedDraft);
+  });
+
+  it("falls back to the saved profile when draft still matches it", () => {
+    expect(resolveEditableNutritionProfile({ profile: savedProfile, draft: savedProfile })).toEqual(savedProfile);
   });
 });

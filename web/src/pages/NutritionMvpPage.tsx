@@ -44,7 +44,7 @@ import {
 import { syncNutritionSessionFromEmail } from "@/features/nutrition/session-sync";
 import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
-import { deriveNutritionUiState } from "@/features/nutrition/ui-state";
+import { deriveNutritionUiState, resolveEditableNutritionProfile } from "@/features/nutrition/ui-state";
 
 type Screen = "login" | "onboarding" | "home" | "scan" | "ocr" | "lunchbox" | "search" | "buffet" | "camera" | "cook" | "selector" | "detail" | "history" | "favorites" | "settings";
 
@@ -799,7 +799,7 @@ export default function NutritionMvpPage() {
         ) : null}
         {screen === "settings" ? (
           <SettingsScreen
-            profile={profile ?? onboardingDraft}
+            profile={resolveEditableNutritionProfile({ profile, draft: onboardingDraft })}
             onBack={() => setScreen("home")}
             onChange={setOnboardingDraft}
             onSave={() => {

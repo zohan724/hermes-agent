@@ -52,6 +52,8 @@ import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
 import { deriveNutritionUiState, resolveEditableNutritionProfile } from "@/features/nutrition/ui-state";
 
+const HOME_RECORDS_SECTION_ID = "nutrition-home-records";
+
 type Screen =
   | "login"
   | "onboarding"
@@ -425,6 +427,7 @@ export default function NutritionMvpPage() {
     if (!profile) return "onboarding";
     return "home";
   });
+  const [pendingHomeAnchor, setPendingHomeAnchor] = useState<"records" | null>(null);
   const [scanState, setScanState] = useState<"idle" | "found" | "not-found">("idle");
   const [scannedFood, setScannedFood] = useState<FoodItem | null>(null);
   const [detailDraft, setDetailDraft] = useState<DetailDraft | null>(null);
@@ -517,6 +520,17 @@ export default function NutritionMvpPage() {
       subscription.unsubscribe();
     };
   }, [supabaseAuth]);
+
+  useEffect(() => {
+    if (screen !== "home" || pendingHomeAnchor !== "records") return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      document.getElementById(HOME_RECORDS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setPendingHomeAnchor(null);
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [pendingHomeAnchor, screen]);
 
   const nowIso = formatLocalIso();
   const todaySummary = useMemo(() => summarizeBusinessDay(logs, nowIso), [logs, nowIso]);
@@ -968,6 +982,7 @@ export default function NutritionMvpPage() {
             onOpenFavorites={() => setScreen("favorites")}
             onOpenSettings={() => { setOnboardingDraft(profile ?? defaultProfile); setScreen("settings"); }}
             onOpenHistory={() => setScreen("history")}
+            onOpenRecords={() => setPendingHomeAnchor("records")}
             onQuickAdd={(food) => openDetail(food, food.name.includes("飯糰") ? "早餐" : "點心")}
             onEditLog={editLog}
             onDeleteLog={deleteLog}
@@ -1096,6 +1111,10 @@ export default function NutritionMvpPage() {
             logs={logs}
             businessDayLabel={businessDayLabel}
             onBack={() => setScreen("home")}
+            onOpenRecords={() => {
+              setPendingHomeAnchor("records");
+              setScreen("home");
+            }}
             onOpenSelector={() => setScreen("selector")}
           />
         ) : null}
@@ -1304,6 +1323,7 @@ function HomeScreen({
   onOpenFavorites,
   onOpenSettings,
   onOpenHistory,
+  onOpenRecords,
   onQuickAdd,
   onEditLog,
   onDeleteLog,
@@ -1332,6 +1352,7 @@ function HomeScreen({
   onOpenFavorites: () => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
+  onOpenRecords: () => void;
   onQuickAdd: (food: FoodItem) => void;
   onEditLog: (log: MealLog) => void;
   onDeleteLog: (id: string) => void;
@@ -1504,7 +1525,7 @@ function HomeScreen({
         </div>
       ) : null}
 
-      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+      <div id={HOME_RECORDS_SECTION_ID} className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
         <SectionTitle title={`${businessDayLabel}紀錄`} action={`總熱量 ${totals.calories} kcal`} />
         <div className="mt-3 space-y-3">
           {mealGroups.length ? (
@@ -1549,7 +1570,7 @@ function HomeScreen({
         </div>
       </div>
 
-      <BottomNav active="今日" onHome={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
+      <BottomNav active="今日" onHome={undefined} onRecord={onOpenRecords} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
     </div>
   );
 }
@@ -2522,11 +2543,13 @@ function HistoryScreen({
   logs,
   businessDayLabel,
   onBack,
+  onOpenRecords,
   onOpenSelector,
 }: {
   logs: MealLog[];
   businessDayLabel: string;
   onBack: () => void;
+  onOpenRecords: () => void;
   onOpenSelector: () => void;
 }) {
   const [mode, setMode] = useState<'day' | 'week'>('day');
@@ -2645,12 +2668,12 @@ function HistoryScreen({
           </div>
         )}
       </div>
-      <BottomNav active="歷史" onHome={onBack} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
+      <BottomNav active="歷史" onHome={onBack} onRecord={onOpenRecords} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
     </div>
   );
 }
 
-function BottomNav({ active, onHome, onHistory, onAddRecord, onSettings }: { active: "今日" | "歷史"; onHome?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
+export function BottomNav({ active, onHome, onRecord, onHistory, onAddRecord, onSettings }: { active: "今日" | "歷史"; onHome?: () => void; onRecord?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
   return (
     <div className="rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
       <div className="grid grid-cols-5 items-end text-center text-[11px] text-[#615D59]">
@@ -2658,10 +2681,10 @@ function BottomNav({ active, onHome, onHistory, onAddRecord, onSettings }: { act
           <House className="h-4 w-4" />
           今日
         </button>
-        <div className="grid justify-items-center gap-1">
+        <button onClick={onRecord} aria-label="查看今日紀錄" className="grid justify-items-center gap-1">
           <NotebookPen className="h-4 w-4" />
           紀錄
-        </div>
+        </button>
         <button onClick={onAddRecord} className="grid justify-items-center gap-1 -translate-y-4">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-[#2FA56F] text-white shadow-[0_14px_26px_rgba(47,165,111,0.26)]">
             <Plus className="h-5 w-5" />

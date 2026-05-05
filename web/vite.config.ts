@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 const BACKEND = process.env.HERMES_DASHBOARD_URL ?? "http://127.0.0.1:9119";
+const IS_VERCEL = process.env.VERCEL === "1";
 
 /**
  * In production the Python `hermes dashboard` server injects a one-shot
@@ -90,7 +91,7 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: "../hermes_cli/web_dist",
+    outDir: IS_VERCEL ? "dist" : "../hermes_cli/web_dist",
     emptyOutDir: true,
   },
   server: {

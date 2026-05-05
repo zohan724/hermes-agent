@@ -105,6 +105,35 @@ describe("createRemoteNutritionRepo", () => {
     expect(lastSnapshot.recentSearches[0]).toBe("豆奶");
   });
 
+  it("flushes the saved profile snapshot even if logout happens before sync finishes", async () => {
+    const save = vi.fn(async (_snapshot: NutritionSnapshot) => {});
+    const repo = createRemoteNutritionRepo({
+      seed: defaultNutritionSeed,
+      storage: createMemoryStorage(),
+      gateway: {
+        load: vi.fn(async () => null),
+        save,
+      },
+    });
+
+    repo.setSession({ authed: true, email: profile.email });
+    repo.saveProfile(profile);
+    repo.setSession({ authed: false, email: null });
+    repo.saveProfile(null);
+    await repo.flush!();
+
+    expect(save.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({
+            auth: { authed: true, email: profile.email },
+            profile,
+          }),
+        ],
+      ]),
+    );
+  });
+
   it("treats empty Supabase write responses as success during save", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

@@ -34,13 +34,13 @@ export function createRemoteNutritionRepo({
   const local = createLocalNutritionRepo({ storage, seed });
   let syncQueue = Promise.resolve();
 
-  const enqueueSync = () => {
-    const email = local.getSnapshot().auth.email;
+  const enqueueSync = (snapshot: NutritionSnapshot = local.getSnapshot()) => {
+    const email = snapshot.auth.email;
     if (!gateway || !email) return;
     syncQueue = syncQueue
       .catch(() => undefined)
       .then(async () => {
-        await gateway.save(local.getSnapshot());
+        await gateway.save(snapshot);
       });
   };
 

@@ -10,6 +10,7 @@ export type FoodItem = {
   serving: string;
   category: "packaged" | "meal" | "drink" | "fruit";
   aliases?: string[];
+  tags?: string[];
   barcode?: string;
   sourceType?: "curated" | "barcode" | "user" | "template";
   createdAt?: string;
@@ -45,7 +46,7 @@ export function searchFoods(foods: FoodItem[], query: string): FoodItem[] {
   if (!normalized) return foods;
   return [...foods]
     .filter((food) => {
-      const haystack = [food.name, food.brand ?? "", food.serving, ...(food.aliases ?? [])].join(" ").toLowerCase();
+      const haystack = [food.name, food.brand ?? "", food.serving, ...(food.aliases ?? []), ...(food.tags ?? [])].join(" ").toLowerCase();
       return haystack.includes(normalized);
     })
     .sort((a, b) => {
@@ -61,13 +62,17 @@ function scoreFoodMatch(food: FoodItem, query: string): number {
   const name = food.name.toLowerCase();
   const brand = (food.brand ?? "").toLowerCase();
   const aliases = (food.aliases ?? []).map((alias) => alias.toLowerCase());
+  const tags = (food.tags ?? []).map((tag) => tag.toLowerCase());
   if (name === query) return 300;
   if (aliases.includes(query)) return 260;
+  if (tags.includes(query)) return 220;
   if (name.startsWith(query)) return 200;
   if (aliases.some((alias) => alias.startsWith(query))) return 170;
+  if (tags.some((tag) => tag.startsWith(query))) return 150;
   if (name.includes(query)) return 120;
   if (aliases.some((alias) => alias.includes(query))) return 100;
   if (brand.includes(query)) return 80;
+  if (tags.some((tag) => tag.includes(query))) return 70;
   return 10;
 }
 

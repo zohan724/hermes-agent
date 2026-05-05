@@ -46,6 +46,7 @@ const foods: FoodItem[] = [
     category: "drink",
     barcode: "333",
     sourceType: "user",
+    tags: ["全聯", "高蛋白"],
   },
 ];
 
@@ -78,12 +79,15 @@ describe("buildFoodCatalog", () => {
 });
 
 describe("searchFoods", () => {
-  it("matches name, brand, and aliases while prioritizing exact name matches then brand matches", () => {
+  it("matches name, brand, aliases, and tags while prioritizing exact name matches then brand matches", () => {
     const results = searchFoods(foods, "豆");
     expect(results.map((food) => food.id)).toEqual(["b", "c"]);
 
     const aliasResults = searchFoods(foods, "無加糖豆漿");
     expect(aliasResults.map((food) => food.id)).toEqual(["b"]);
+
+    const tagResults = searchFoods(foods, "全聯");
+    expect(tagResults.map((food) => food.id)).toEqual(["c"]);
 
     const brandResults = searchFoods(foods, "7-eleven");
     expect(brandResults.map((food) => food.id)).toEqual(["a"]);

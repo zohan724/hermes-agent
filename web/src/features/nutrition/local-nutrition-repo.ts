@@ -39,6 +39,7 @@ const demoFoods: FoodItem[] = [
     serving: "1 個 (110g)",
     category: "packaged",
     aliases: ["御飯糰", "鮪魚御飯糰"],
+    tags: ["超商", "便利商店", "7-11", "早餐"],
     barcode: "4710010011111",
     sourceType: "barcode",
   },
@@ -52,6 +53,7 @@ const demoFoods: FoodItem[] = [
     serving: "240 ml",
     category: "drink",
     aliases: ["豆漿", "無加糖豆漿"],
+    tags: ["超商", "便利商店", "早餐", "飲料"],
     barcode: "4710102222222",
     sourceType: "curated",
   },
@@ -102,6 +104,7 @@ const demoFoods: FoodItem[] = [
     serving: "1 顆",
     category: "packaged",
     aliases: ["滷蛋", "蛋"],
+    tags: ["超商", "便利商店", "早餐", "蛋白質"],
     sourceType: "curated",
   },
   {
@@ -210,6 +213,7 @@ const demoFoods: FoodItem[] = [
     serving: "1 份",
     category: "meal",
     aliases: ["蔥抓蛋餅", "早餐蛋餅"],
+    tags: ["早餐店", "早餐", "台式早餐"],
     sourceType: "curated",
   },
   {
@@ -234,6 +238,7 @@ const demoFoods: FoodItem[] = [
     serving: "1 杯 (700ml)",
     category: "drink",
     aliases: ["紅茶", "冰紅茶"],
+    tags: ["手搖飲", "飲料", "無糖"],
     sourceType: "curated",
   },
   {
@@ -246,6 +251,7 @@ const demoFoods: FoodItem[] = [
     serving: "1 杯 (700ml)",
     category: "drink",
     aliases: ["珍奶", "奶茶"],
+    tags: ["手搖飲", "飲料", "含糖"],
     sourceType: "curated",
   },
   {

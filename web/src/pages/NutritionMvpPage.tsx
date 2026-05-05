@@ -681,6 +681,7 @@ export default function NutritionMvpPage() {
             authBusy={authBusy}
             authError={authError}
             googleEnabled={Boolean(supabaseAuth)}
+            allowEmailTestEntry={Boolean(import.meta.env.DEV)}
           />
         ) : null}
         {screen === "onboarding" ? (
@@ -833,6 +834,7 @@ function LoginScreen({
   authBusy,
   authError,
   googleEnabled,
+  allowEmailTestEntry,
 }: {
   draft: { email: string; password: string };
   onChange: (value: { email: string; password: string }) => void;
@@ -841,8 +843,9 @@ function LoginScreen({
   authBusy: boolean;
   authError: string | null;
   googleEnabled: boolean;
+  allowEmailTestEntry: boolean;
 }) {
-  const loginMode = getNutritionLoginMode(googleEnabled);
+  const loginMode = getNutritionLoginMode(googleEnabled, allowEmailTestEntry);
 
   return (
     <div className="space-y-5 text-[#1F1F1C] pt-8">

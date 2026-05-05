@@ -44,6 +44,7 @@ import {
 import { syncNutritionSessionFromEmail } from "@/features/nutrition/session-sync";
 import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
+import { deriveNutritionUiState } from "@/features/nutrition/ui-state";
 
 type Screen = "login" | "onboarding" | "home" | "scan" | "ocr" | "lunchbox" | "search" | "buffet" | "camera" | "cook" | "selector" | "detail" | "history" | "favorites" | "settings";
 
@@ -313,14 +314,17 @@ export default function NutritionMvpPage() {
   const applySessionEmail = (email: string | null) => {
     syncNutritionSessionFromEmail(service, email);
     const nextSnapshot = service.getSnapshot();
+    const nextUiState = deriveNutritionUiState({
+      snapshot: nextSnapshot,
+      currentDraft: onboardingDraft,
+      fallbackProfile: defaultProfile,
+    });
     setSnapshot(nextSnapshot);
     if (email) {
       setLoginDraft((current) => ({ ...current, email }));
-      setOnboardingDraft((current) => ({ ...(nextSnapshot.profile ?? current), email }));
-      setScreen(nextSnapshot.profile ? "home" : "onboarding");
-      return;
     }
-    setScreen("login");
+    setOnboardingDraft(nextUiState.onboardingDraft);
+    setScreen(nextUiState.screen);
   };
 
   useEffect(() => {
@@ -328,7 +332,25 @@ export default function NutritionMvpPage() {
     service
       .hydrate()
       .then((nextSnapshot) => {
-        if (!cancelled) setSnapshot(nextSnapshot);
+        if (cancelled) return;
+        setSnapshot(nextSnapshot);
+        setOnboardingDraft((current) =>
+          deriveNutritionUiState({
+            snapshot: nextSnapshot,
+            currentDraft: current,
+            fallbackProfile: defaultProfile,
+          }).onboardingDraft,
+        );
+        setScreen((current) => {
+          const nextUiState = deriveNutritionUiState({
+            snapshot: nextSnapshot,
+            currentDraft: onboardingDraft,
+            fallbackProfile: defaultProfile,
+          });
+          return current === "detail" || current === "search" || current === "settings" || current === "history"
+            ? current
+            : nextUiState.screen;
+        });
       })
       .catch(() => undefined);
     return () => {

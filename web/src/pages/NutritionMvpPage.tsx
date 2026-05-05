@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  Barcode,
   Bell,
   Camera,
   ChartColumn,
@@ -10,12 +9,10 @@ import {
   House,
   Image as ImageIcon,
   Leaf,
-  NotebookPen,
   Plus,
   Search,
   Sparkles,
   Star,
-  UtensilsCrossed,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,7 +46,6 @@ import {
 } from "@/features/nutrition/supabase-auth";
 import { syncNutritionSessionFromEmail } from "@/features/nutrition/session-sync";
 import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
-import { resolveBottomNavTarget } from "@/features/nutrition/nav-state";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
 import { deriveNutritionUiState, resolveEditableNutritionProfile } from "@/features/nutrition/ui-state";
 
@@ -57,7 +53,6 @@ type Screen =
   | "login"
   | "onboarding"
   | "home"
-  | "records"
   | "scan"
   | "ocr"
   | "lunchbox"
@@ -97,19 +92,6 @@ const DAILY_TARGET = {
   protein: 110,
   carbs: 220,
 } as const;
-
-const quickActions = [
-  { key: "scan", label: "掃條碼", icon: Barcode },
-  { key: "search", label: "搜尋食物", icon: Search },
-  { key: "ocr", label: "拍營養標示", icon: NotebookPen },
-  { key: "camera", label: "拍照辨識", icon: Camera },
-  { key: "lunchbox", label: "健康餐盒", icon: UtensilsCrossed },
-  { key: "buffet", label: "自助餐", icon: Sparkles },
-  { key: "breakfast", label: "早餐店", icon: Leaf },
-  { key: "drink", label: "手搖飲", icon: Zap },
-  { key: "cook", label: "自己煮", icon: Leaf },
-  { key: "favorite", label: "常吃", icon: Star },
-] as const;
 
 type LunchboxState = {
   protein: string;
@@ -733,11 +715,6 @@ export default function NutritionMvpPage() {
     openDetail(homeQuickActions.continueLog.food, homeQuickActions.continueLog.mealType);
   };
 
-  const navigateBottomNav = (tab: "今天" | "紀錄" | "歷史", active: "今日" | "records" | "歷史") => {
-    const target = resolveBottomNavTarget({ active, tab });
-    setScreen(target);
-  };
-
   const completeLogin = () => {
     setAuthError(null);
     service.completeLogin(loginDraft.email);
@@ -962,20 +939,10 @@ export default function NutritionMvpPage() {
             recentFoods={recentFoods}
             onRunHomeQuickAction={runHomeQuickAction}
             onContinueLastMeal={continueLastMeal}
-            onOpenScan={() => startScanDemo("found")}
-            onOpenLunchbox={() => setScreen("lunchbox")}
-            onOpenOcr={() => setScreen("ocr")}
-            onOpenSearch={() => setScreen("search")}
-            onOpenBuffet={() => setScreen("buffet")}
-            onOpenCamera={() => setScreen("camera")}
-            onOpenBreakfast={() => setScreen("breakfast")}
-            onOpenDrink={() => setScreen("drink")}
-            onOpenCook={() => setScreen("cook")}
             onOpenSelector={() => setScreen("selector")}
             onOpenFavorites={() => setScreen("favorites")}
             onOpenSettings={() => { setOnboardingDraft(profile ?? defaultProfile); setScreen("settings"); }}
-            onOpenHistory={() => navigateBottomNav("歷史", "今日")}
-            onOpenRecords={() => navigateBottomNav("紀錄", "今日")}
+            onOpenHistory={() => setScreen("history")}
             onQuickAdd={(food) => openDetail(food, food.name.includes("飯糰") ? "早餐" : "點心")}
             onEditLog={editLog}
             onDeleteLog={deleteLog}
@@ -1099,27 +1066,12 @@ export default function NutritionMvpPage() {
             onSubmit={saveDetail}
           />
         ) : null}
-        {screen === "records" ? (
-          <RecordsScreen
-            logs={todayLogs}
-            totals={totals}
-            businessDayLabel={businessDayLabel}
-            onBack={() => setScreen("home")}
-            onOpenHome={() => navigateBottomNav("今天", "records")}
-            onOpenHistory={() => navigateBottomNav("歷史", "records")}
-            onOpenSelector={() => setScreen("selector")}
-            onOpenSettings={() => { setOnboardingDraft(profile ?? defaultProfile); setScreen("settings"); }}
-            onEditLog={editLog}
-            onDeleteLog={deleteLog}
-          />
-        ) : null}
         {screen === "history" ? (
           <HistoryScreen
             logs={logs}
             businessDayLabel={businessDayLabel}
             onBack={() => setScreen("home")}
-            onOpenRecords={() => navigateBottomNav("紀錄", "歷史")}
-            onOpenHome={() => navigateBottomNav("今天", "歷史")}
+            onOpenHome={() => setScreen("home")}
             onOpenSelector={() => setScreen("selector")}
           />
         ) : null}
@@ -1315,20 +1267,10 @@ function HomeScreen({
   logs,
   onRunHomeQuickAction,
   onContinueLastMeal,
-  onOpenScan,
-  onOpenLunchbox,
-  onOpenOcr,
-  onOpenSearch,
-  onOpenBuffet,
-  onOpenCamera,
-  onOpenBreakfast,
-  onOpenDrink,
-  onOpenCook,
   onOpenSelector,
   onOpenFavorites,
   onOpenSettings,
   onOpenHistory,
-  onOpenRecords,
   onQuickAdd,
   onEditLog,
   onDeleteLog,
@@ -1344,20 +1286,10 @@ function HomeScreen({
   logs: MealLog[];
   onRunHomeQuickAction: (action: ReturnType<typeof deriveHomeQuickActions>["primary"]) => void;
   onContinueLastMeal: () => void;
-  onOpenScan: () => void;
-  onOpenLunchbox: () => void;
-  onOpenOcr: () => void;
-  onOpenSearch: () => void;
-  onOpenBuffet: () => void;
-  onOpenCamera: () => void;
-  onOpenBreakfast: () => void;
-  onOpenDrink: () => void;
-  onOpenCook: () => void;
   onOpenSelector: () => void;
   onOpenFavorites: () => void;
   onOpenSettings: () => void;
   onOpenHistory: () => void;
-  onOpenRecords: () => void;
   onQuickAdd: (food: FoodItem) => void;
   onEditLog: (log: MealLog) => void;
   onDeleteLog: (id: string) => void;
@@ -1442,42 +1374,6 @@ function HomeScreen({
       </div>
 
       <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
-        <SectionTitle title="快速新增" />
-        <div className="mt-3 grid grid-cols-4 gap-3">
-          {quickActions.map(({ key, label, icon: Icon }) => {
-            const onClick =
-              key === "scan"
-                ? onOpenScan
-                : key === "lunchbox"
-                  ? onOpenLunchbox
-                  : key === "ocr"
-                    ? onOpenOcr
-                    : key === "search"
-                      ? onOpenSearch
-                      : key === "buffet"
-                        ? onOpenBuffet
-                        : key === "camera"
-                          ? onOpenCamera
-                          : key === "breakfast"
-                            ? onOpenBreakfast
-                            : key === "drink"
-                              ? onOpenDrink
-                              : key === "cook"
-                                ? onOpenCook
-                                : key === "favorite"
-                                  ? onOpenFavorites
-                                  : onOpenHistory;
-            return (
-              <button key={key} onClick={onClick} className="rounded-[18px] bg-[#F7F5F0] px-2 py-3 text-center">
-                <Icon className="mx-auto h-5 w-5 text-[#2FA56F]" />
-                <div className="mt-2 text-[11px] font-medium leading-4 text-[#1F1F1C]">{label}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
         <SectionTitle title="最近常吃" action="看全部" onAction={onOpenFavorites} />
         <div className="mt-3 flex gap-3 overflow-x-auto pb-1 scrollbar-none">
           {frequentFoods.map((food) => (
@@ -1534,7 +1430,7 @@ function HomeScreen({
         onDeleteLog={onDeleteLog}
       />
 
-      <BottomNav active="今日" onHome={undefined} onRecord={onOpenRecords} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
+      <BottomNav active="今日" onHome={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
     </div>
   );
 }
@@ -1600,46 +1496,6 @@ function TodayRecordsSection({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function RecordsScreen({
-  logs,
-  totals,
-  businessDayLabel,
-  onBack,
-  onOpenHome,
-  onOpenHistory,
-  onOpenSelector,
-  onOpenSettings,
-  onEditLog,
-  onDeleteLog,
-}: {
-  logs: MealLog[];
-  totals: { calories: number; protein: number; carbs: number };
-  businessDayLabel: string;
-  onBack: () => void;
-  onOpenHome: () => void;
-  onOpenHistory: () => void;
-  onOpenSelector: () => void;
-  onOpenSettings: () => void;
-  onEditLog: (log: MealLog) => void;
-  onDeleteLog: (id: string) => void;
-}) {
-  return (
-    <div className="space-y-4 text-[#1F1F1C]">
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-black/6">
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="text-base font-semibold">今日紀錄</div>
-        <button onClick={onOpenSettings} className="grid h-10 w-10 place-items-center rounded-full bg-[#E6F2E8] text-sm font-semibold text-[#2FA56F]">佐</button>
-      </div>
-
-      <TodayRecordsSection businessDayLabel={businessDayLabel} totals={totals} logs={logs} onEditLog={onEditLog} onDeleteLog={onDeleteLog} />
-
-      <BottomNav active="records" onHome={onOpenHome} onRecord={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
     </div>
   );
 }
@@ -2612,14 +2468,12 @@ function HistoryScreen({
   logs,
   businessDayLabel,
   onBack,
-  onOpenRecords,
   onOpenHome,
   onOpenSelector,
 }: {
   logs: MealLog[];
   businessDayLabel: string;
   onBack: () => void;
-  onOpenRecords: () => void;
   onOpenHome: () => void;
   onOpenSelector: () => void;
 }) {
@@ -2739,22 +2593,18 @@ function HistoryScreen({
           </div>
         )}
       </div>
-      <BottomNav active="歷史" onHome={onOpenHome} onRecord={onOpenRecords} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
+      <BottomNav active="歷史" onHome={onOpenHome} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
     </div>
   );
 }
 
-export function BottomNav({ active, onHome, onRecord, onHistory, onAddRecord, onSettings }: { active: "今日" | "records" | "歷史"; onHome?: () => void; onRecord?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
+export function BottomNav({ active, onHome, onHistory, onAddRecord, onSettings }: { active: "今日" | "歷史"; onHome?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
   return (
     <div className="rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
-      <div className="grid grid-cols-5 items-end text-center text-[11px] text-[#615D59]">
+      <div className="grid grid-cols-4 items-end text-center text-[11px] text-[#615D59]">
         <button onClick={onHome} className={cn("grid justify-items-center gap-1", active === "今日" ? "text-[#2FA56F]" : undefined)}>
           <House className="h-4 w-4" />
           今日
-        </button>
-        <button onClick={onRecord} aria-label="查看今日紀錄" className={cn("grid justify-items-center gap-1", active === "records" ? "text-[#2FA56F]" : undefined)}>
-          <NotebookPen className="h-4 w-4" />
-          紀錄
         </button>
         <button onClick={onAddRecord} className="grid justify-items-center gap-1 -translate-y-4">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-[#2FA56F] text-white shadow-[0_14px_26px_rgba(47,165,111,0.26)]">

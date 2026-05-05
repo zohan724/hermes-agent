@@ -33,6 +33,7 @@ const foods: FoodItem[] = [
     category: "drink",
     barcode: "222",
     sourceType: "barcode",
+    aliases: ["豆漿", "無加糖豆漿"],
   },
   {
     id: "c",
@@ -77,9 +78,12 @@ describe("buildFoodCatalog", () => {
 });
 
 describe("searchFoods", () => {
-  it("matches name and brand, prioritizing exact name matches then brand matches", () => {
+  it("matches name, brand, and aliases while prioritizing exact name matches then brand matches", () => {
     const results = searchFoods(foods, "豆");
     expect(results.map((food) => food.id)).toEqual(["b", "c"]);
+
+    const aliasResults = searchFoods(foods, "無加糖豆漿");
+    expect(aliasResults.map((food) => food.id)).toEqual(["b"]);
 
     const brandResults = searchFoods(foods, "7-eleven");
     expect(brandResults.map((food) => food.id)).toEqual(["a"]);

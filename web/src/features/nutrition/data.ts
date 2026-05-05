@@ -9,6 +9,7 @@ export type FoodItem = {
   carbs: number;
   serving: string;
   category: "packaged" | "meal" | "drink" | "fruit";
+  aliases?: string[];
   barcode?: string;
   sourceType?: "curated" | "barcode" | "user" | "template";
   createdAt?: string;
@@ -44,7 +45,7 @@ export function searchFoods(foods: FoodItem[], query: string): FoodItem[] {
   if (!normalized) return foods;
   return [...foods]
     .filter((food) => {
-      const haystack = `${food.name} ${food.brand ?? ""} ${food.serving}`.toLowerCase();
+      const haystack = [food.name, food.brand ?? "", food.serving, ...(food.aliases ?? [])].join(" ").toLowerCase();
       return haystack.includes(normalized);
     })
     .sort((a, b) => {
@@ -59,9 +60,13 @@ export function searchFoods(foods: FoodItem[], query: string): FoodItem[] {
 function scoreFoodMatch(food: FoodItem, query: string): number {
   const name = food.name.toLowerCase();
   const brand = (food.brand ?? "").toLowerCase();
+  const aliases = (food.aliases ?? []).map((alias) => alias.toLowerCase());
   if (name === query) return 300;
+  if (aliases.includes(query)) return 260;
   if (name.startsWith(query)) return 200;
+  if (aliases.some((alias) => alias.startsWith(query))) return 170;
   if (name.includes(query)) return 120;
+  if (aliases.some((alias) => alias.includes(query))) return 100;
   if (brand.includes(query)) return 80;
   return 10;
 }

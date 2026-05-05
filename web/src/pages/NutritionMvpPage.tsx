@@ -49,15 +49,15 @@ import {
 } from "@/features/nutrition/supabase-auth";
 import { syncNutritionSessionFromEmail } from "@/features/nutrition/session-sync";
 import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
+import { resolveBottomNavTarget } from "@/features/nutrition/nav-state";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
 import { deriveNutritionUiState, resolveEditableNutritionProfile } from "@/features/nutrition/ui-state";
-
-const HOME_RECORDS_SECTION_ID = "nutrition-home-records";
 
 type Screen =
   | "login"
   | "onboarding"
   | "home"
+  | "records"
   | "scan"
   | "ocr"
   | "lunchbox"
@@ -427,7 +427,6 @@ export default function NutritionMvpPage() {
     if (!profile) return "onboarding";
     return "home";
   });
-  const [pendingHomeAnchor, setPendingHomeAnchor] = useState<"records" | null>(null);
   const [scanState, setScanState] = useState<"idle" | "found" | "not-found">("idle");
   const [scannedFood, setScannedFood] = useState<FoodItem | null>(null);
   const [detailDraft, setDetailDraft] = useState<DetailDraft | null>(null);
@@ -520,17 +519,6 @@ export default function NutritionMvpPage() {
       subscription.unsubscribe();
     };
   }, [supabaseAuth]);
-
-  useEffect(() => {
-    if (screen !== "home" || pendingHomeAnchor !== "records") return;
-
-    const rafId = window.requestAnimationFrame(() => {
-      document.getElementById(HOME_RECORDS_SECTION_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setPendingHomeAnchor(null);
-    });
-
-    return () => window.cancelAnimationFrame(rafId);
-  }, [pendingHomeAnchor, screen]);
 
   const nowIso = formatLocalIso();
   const todaySummary = useMemo(() => summarizeBusinessDay(logs, nowIso), [logs, nowIso]);
@@ -743,6 +731,11 @@ export default function NutritionMvpPage() {
   const continueLastMeal = () => {
     if (!homeQuickActions.continueLog) return;
     openDetail(homeQuickActions.continueLog.food, homeQuickActions.continueLog.mealType);
+  };
+
+  const navigateBottomNav = (tab: "今天" | "紀錄" | "歷史", active: "今日" | "records" | "歷史") => {
+    const target = resolveBottomNavTarget({ active, tab });
+    setScreen(target);
   };
 
   const completeLogin = () => {
@@ -981,8 +974,8 @@ export default function NutritionMvpPage() {
             onOpenSelector={() => setScreen("selector")}
             onOpenFavorites={() => setScreen("favorites")}
             onOpenSettings={() => { setOnboardingDraft(profile ?? defaultProfile); setScreen("settings"); }}
-            onOpenHistory={() => setScreen("history")}
-            onOpenRecords={() => setPendingHomeAnchor("records")}
+            onOpenHistory={() => navigateBottomNav("歷史", "今日")}
+            onOpenRecords={() => navigateBottomNav("紀錄", "今日")}
             onQuickAdd={(food) => openDetail(food, food.name.includes("飯糰") ? "早餐" : "點心")}
             onEditLog={editLog}
             onDeleteLog={deleteLog}
@@ -1106,15 +1099,27 @@ export default function NutritionMvpPage() {
             onSubmit={saveDetail}
           />
         ) : null}
+        {screen === "records" ? (
+          <RecordsScreen
+            logs={todayLogs}
+            totals={totals}
+            businessDayLabel={businessDayLabel}
+            onBack={() => setScreen("home")}
+            onOpenHome={() => navigateBottomNav("今天", "records")}
+            onOpenHistory={() => navigateBottomNav("歷史", "records")}
+            onOpenSelector={() => setScreen("selector")}
+            onOpenSettings={() => { setOnboardingDraft(profile ?? defaultProfile); setScreen("settings"); }}
+            onEditLog={editLog}
+            onDeleteLog={deleteLog}
+          />
+        ) : null}
         {screen === "history" ? (
           <HistoryScreen
             logs={logs}
             businessDayLabel={businessDayLabel}
             onBack={() => setScreen("home")}
-            onOpenRecords={() => {
-              setPendingHomeAnchor("records");
-              setScreen("home");
-            }}
+            onOpenRecords={() => navigateBottomNav("紀錄", "歷史")}
+            onOpenHome={() => navigateBottomNav("今天", "歷史")}
             onOpenSelector={() => setScreen("selector")}
           />
         ) : null}
@@ -1357,10 +1362,6 @@ function HomeScreen({
   onEditLog: (log: MealLog) => void;
   onDeleteLog: (id: string) => void;
 }) {
-  const mealGroups = (["早餐", "午餐", "晚餐", "點心"] as MealType[])
-    .map((mealType) => ({ mealType, items: logs.filter((log) => log.mealType === mealType) }))
-    .filter((group) => group.items.length > 0);
-
   return (
     <div className="space-y-4 text-[#1F1F1C]">
       <div className="flex items-start justify-between">
@@ -1525,52 +1526,120 @@ function HomeScreen({
         </div>
       ) : null}
 
-      <div id={HOME_RECORDS_SECTION_ID} className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
-        <SectionTitle title={`${businessDayLabel}紀錄`} action={`總熱量 ${totals.calories} kcal`} />
-        <div className="mt-3 space-y-3">
-          {mealGroups.length ? (
-            mealGroups.map(({ mealType, items }) => (
-              <div key={mealType} className="rounded-[18px] bg-[#F7F5F0] p-3">
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 font-semibold text-[#1F1F1C]">
-                    <Sparkles className="h-4 w-4 text-[#2FA56F]" />
-                    {mealType}
-                  </div>
-                  <span className="font-semibold text-[#1F1F1C]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {items.map((log) => (
-                    <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
-                      <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
-                        <FoodEmoji category={log.food.category} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
-                        <div className="truncate text-xs text-[#615D59]">
-                          {log.food.brand ? `${log.food.brand} ｜ ` : ""}
-                          {log.food.serving}
-                        </div>
-                        <div className="mt-1"><FoodSourceBadge food={log.food} /></div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
-                        <button onClick={() => onEditLog(log)} className="rounded-full bg-[#F7F5F0] px-2 py-1 text-[11px] text-[#615D59]">編輯</button>
-                        <button onClick={() => onDeleteLog(log.id)} className="rounded-full bg-[#FFF1F1] px-2 py-1 text-[11px] text-[#D95C5C]">刪除</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-5 text-sm leading-6 text-[#615D59]">
-              這個 {businessDayLabel} 還沒開始記。先加早餐、飲料或常吃食物，之後打開就會更自然。
-            </div>
-          )}
-        </div>
-      </div>
+      <TodayRecordsSection
+        businessDayLabel={businessDayLabel}
+        totals={totals}
+        logs={logs}
+        onEditLog={onEditLog}
+        onDeleteLog={onDeleteLog}
+      />
 
       <BottomNav active="今日" onHome={undefined} onRecord={onOpenRecords} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
+    </div>
+  );
+}
+
+function TodayRecordsSection({
+  businessDayLabel,
+  totals,
+  logs,
+  onEditLog,
+  onDeleteLog,
+}: {
+  businessDayLabel: string;
+  totals: { calories: number; protein: number; carbs: number };
+  logs: MealLog[];
+  onEditLog: (log: MealLog) => void;
+  onDeleteLog: (id: string) => void;
+}) {
+  const mealGroups = (["早餐", "午餐", "晚餐", "點心"] as MealType[])
+    .map((mealType) => ({ mealType, items: logs.filter((log) => log.mealType === mealType) }))
+    .filter((group) => group.items.length > 0);
+
+  return (
+    <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+      <SectionTitle title={`${businessDayLabel}紀錄`} action={`總熱量 ${totals.calories} kcal`} />
+      <div className="mt-3 space-y-3">
+        {mealGroups.length ? (
+          mealGroups.map(({ mealType, items }) => (
+            <div key={mealType} className="rounded-[18px] bg-[#F7F5F0] p-3">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2 font-semibold text-[#1F1F1C]">
+                  <Sparkles className="h-4 w-4 text-[#2FA56F]" />
+                  {mealType}
+                </div>
+                <span className="font-semibold text-[#1F1F1C]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {items.map((log) => (
+                  <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
+                      <FoodEmoji category={log.food.category} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
+                      <div className="truncate text-xs text-[#615D59]">
+                        {log.food.brand ? `${log.food.brand} ｜ ` : ""}
+                        {log.food.serving}
+                      </div>
+                      <div className="mt-1"><FoodSourceBadge food={log.food} /></div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
+                      <button onClick={() => onEditLog(log)} className="rounded-full bg-[#F7F5F0] px-2 py-1 text-[11px] text-[#615D59]">編輯</button>
+                      <button onClick={() => onDeleteLog(log.id)} className="rounded-full bg-[#FFF1F1] px-2 py-1 text-[11px] text-[#D95C5C]">刪除</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-5 text-sm leading-6 text-[#615D59]">
+            這個 {businessDayLabel} 還沒開始記。先加早餐、飲料或常吃食物，之後打開就會更自然。
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecordsScreen({
+  logs,
+  totals,
+  businessDayLabel,
+  onBack,
+  onOpenHome,
+  onOpenHistory,
+  onOpenSelector,
+  onOpenSettings,
+  onEditLog,
+  onDeleteLog,
+}: {
+  logs: MealLog[];
+  totals: { calories: number; protein: number; carbs: number };
+  businessDayLabel: string;
+  onBack: () => void;
+  onOpenHome: () => void;
+  onOpenHistory: () => void;
+  onOpenSelector: () => void;
+  onOpenSettings: () => void;
+  onEditLog: (log: MealLog) => void;
+  onDeleteLog: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-4 text-[#1F1F1C]">
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-black/6">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="text-base font-semibold">今日紀錄</div>
+        <button onClick={onOpenSettings} className="grid h-10 w-10 place-items-center rounded-full bg-[#E6F2E8] text-sm font-semibold text-[#2FA56F]">佐</button>
+      </div>
+
+      <TodayRecordsSection businessDayLabel={businessDayLabel} totals={totals} logs={logs} onEditLog={onEditLog} onDeleteLog={onDeleteLog} />
+
+      <BottomNav active="records" onHome={onOpenHome} onRecord={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
     </div>
   );
 }
@@ -2544,12 +2613,14 @@ function HistoryScreen({
   businessDayLabel,
   onBack,
   onOpenRecords,
+  onOpenHome,
   onOpenSelector,
 }: {
   logs: MealLog[];
   businessDayLabel: string;
   onBack: () => void;
   onOpenRecords: () => void;
+  onOpenHome: () => void;
   onOpenSelector: () => void;
 }) {
   const [mode, setMode] = useState<'day' | 'week'>('day');
@@ -2668,12 +2739,12 @@ function HistoryScreen({
           </div>
         )}
       </div>
-      <BottomNav active="歷史" onHome={onBack} onRecord={onOpenRecords} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
+      <BottomNav active="歷史" onHome={onOpenHome} onRecord={onOpenRecords} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
     </div>
   );
 }
 
-export function BottomNav({ active, onHome, onRecord, onHistory, onAddRecord, onSettings }: { active: "今日" | "歷史"; onHome?: () => void; onRecord?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
+export function BottomNav({ active, onHome, onRecord, onHistory, onAddRecord, onSettings }: { active: "今日" | "records" | "歷史"; onHome?: () => void; onRecord?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
   return (
     <div className="rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
       <div className="grid grid-cols-5 items-end text-center text-[11px] text-[#615D59]">
@@ -2681,7 +2752,7 @@ export function BottomNav({ active, onHome, onRecord, onHistory, onAddRecord, on
           <House className="h-4 w-4" />
           今日
         </button>
-        <button onClick={onRecord} aria-label="查看今日紀錄" className="grid justify-items-center gap-1">
+        <button onClick={onRecord} aria-label="查看今日紀錄" className={cn("grid justify-items-center gap-1", active === "records" ? "text-[#2FA56F]" : undefined)}>
           <NotebookPen className="h-4 w-4" />
           紀錄
         </button>

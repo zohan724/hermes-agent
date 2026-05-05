@@ -67,6 +67,7 @@ import ProfilesPage from "@/pages/ProfilesPage";
 import SkillsPage from "@/pages/SkillsPage";
 import PluginsPage from "@/pages/PluginsPage";
 import ChatPage from "@/pages/ChatPage";
+import NutritionMvpPage from "@/pages/NutritionMvpPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -77,7 +78,7 @@ import { useTheme } from "@/themes";
 import { isDashboardEmbeddedChatEnabled } from "@/lib/dashboard-flags";
 
 function RootRedirect() {
-  return <Navigate to="/sessions" replace />;
+  return <Navigate to="/nutrition-mvp" replace />;
 }
 
 function UnknownRouteFallback({ pluginsLoading }: { pluginsLoading: boolean }) {
@@ -117,6 +118,7 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/config": ConfigPage,
   "/env": EnvPage,
   "/docs": DocsPage,
+  "/nutrition-mvp": NutritionMvpPage,
 };
 
 // Route placeholder for /chat.  The persistent ChatPage host (rendered
@@ -158,6 +160,11 @@ const BUILTIN_NAV_REST: NavItem[] = [
     labelKey: "documentation",
     label: "Documentation",
     icon: BookOpen,
+  },
+  {
+    path: "/nutrition-mvp",
+    label: "Nutrition MVP",
+    icon: Heart,
   },
 ];
 
@@ -314,6 +321,7 @@ export default function App() {
   const isDocsRoute = pathname === "/docs" || pathname === "/docs/";
   const normalizedPath = pathname.replace(/\/$/, "") || "/";
   const isChatRoute = normalizedPath === "/chat";
+  const isNutritionMvpRoute = normalizedPath === "/nutrition-mvp" || normalizedPath === "/";
   const embeddedChat = isDashboardEmbeddedChatEnabled();
 
   // A plugin can replace the built-in /chat page via `tab.override: "/chat"`
@@ -395,6 +403,19 @@ export default function App() {
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
+
+  if (isNutritionMvpRoute) {
+    return (
+      <div className="h-dvh overflow-auto bg-[#041c1c]">
+        <Routes>
+          {routes.map(({ key, path, element }) => (
+            <Route key={key} path={path} element={element} />
+          ))}
+          <Route path="*" element={<Navigate to="/nutrition-mvp" replace />} />
+        </Routes>
+      </div>
+    );
+  }
 
   return (
     <div

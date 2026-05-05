@@ -43,6 +43,7 @@ import {
 } from "@/features/nutrition/supabase-auth";
 import { syncNutritionSessionFromEmail } from "@/features/nutrition/session-sync";
 import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
+import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
 
 type Screen = "login" | "onboarding" | "home" | "scan" | "ocr" | "lunchbox" | "search" | "buffet" | "camera" | "cook" | "selector" | "detail" | "history" | "favorites" | "settings";
 
@@ -262,29 +263,8 @@ function SectionTitle({ title, action, onAction }: { title: string; action?: str
   );
 }
 
-function PhoneShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mx-auto w-full max-w-[390px] overflow-hidden rounded-[36px] border border-black/10 bg-[#FCFBF8] shadow-[0_24px_80px_rgba(28,31,26,0.18)]">
-      <div className="mx-auto mt-3 h-7 w-36 rounded-full bg-[#1f1f1f]" />
-      <div className="px-5 pb-6 pt-3">{children}</div>
-    </div>
-  );
-}
-
-function StatusBar() {
-  return (
-    <div className="mb-3 flex items-center justify-between text-[13px] font-semibold text-[#1F1F1C]">
-      <span>9:41</span>
-      <div className="flex items-center gap-2 text-xs">
-        <span>●●●</span>
-        <span>◔</span>
-        <span className="rounded-md border border-[#1F1F1C] px-1 py-0.5 text-[11px] leading-none">100</span>
-      </div>
-    </div>
-  );
-}
-
 export default function NutritionMvpPage() {
+  const pageLayout = getNutritionPageLayout();
   const repo = useMemo(
     () =>
       createNutritionRepository({
@@ -666,10 +646,11 @@ export default function NutritionMvpPage() {
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center overflow-auto bg-[radial-gradient(circle_at_top,#0e3b38_0%,#041c1c_45%,#021212_100%)] px-4 py-8">
-      <PhoneShell>
-        <StatusBar />
-        {screen === "login" ? (
+    <div className={pageLayout.viewportClass}>
+      <div className={pageLayout.shellClass}>
+        <div className={pageLayout.contentClass}>
+          {pageLayout.showStatusBar ? <div /> : null}
+          {screen === "login" ? (
           <LoginScreen
             draft={loginDraft}
             onChange={setLoginDraft}
@@ -816,7 +797,8 @@ export default function NutritionMvpPage() {
           />
         ) : null}
         {screen === "history" ? <HistoryScreen logs={todayLogs} onBack={() => setScreen("home")} onOpenSelector={() => setScreen("selector")} /> : null}
-      </PhoneShell>
+        </div>
+      </div>
     </div>
   );
 }

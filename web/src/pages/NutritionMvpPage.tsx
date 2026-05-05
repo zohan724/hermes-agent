@@ -20,7 +20,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  deriveBusinessDayLabel,
+  deriveHomeQuickActions,
+  deriveRecentFoods,
+  getBusinessDayKey,
+  getFoodSourceMeta,
   searchFoods,
+  summarizeBusinessDay,
   type FoodItem,
   type MealLog,
   type MealType,
@@ -46,7 +52,24 @@ import { getNutritionLoginMode } from "@/features/nutrition/login-mode";
 import { getNutritionPageLayout } from "@/features/nutrition/page-layout";
 import { deriveNutritionUiState, resolveEditableNutritionProfile } from "@/features/nutrition/ui-state";
 
-type Screen = "login" | "onboarding" | "home" | "scan" | "ocr" | "lunchbox" | "search" | "buffet" | "camera" | "cook" | "selector" | "detail" | "history" | "favorites" | "settings";
+type Screen =
+  | "login"
+  | "onboarding"
+  | "home"
+  | "scan"
+  | "ocr"
+  | "lunchbox"
+  | "search"
+  | "buffet"
+  | "camera"
+  | "cook"
+  | "breakfast"
+  | "drink"
+  | "selector"
+  | "detail"
+  | "history"
+  | "favorites"
+  | "settings";
 
 type OcrDraft = {
   name: string;
@@ -62,6 +85,7 @@ type DetailDraft = {
   mealType: MealType;
   quantity: number;
   editingLogId?: string;
+  createdAtOverride?: string;
 };
 
 type UserProfile = NutritionProfile;
@@ -79,6 +103,8 @@ const quickActions = [
   { key: "camera", label: "拍照辨識", icon: Camera },
   { key: "lunchbox", label: "健康餐盒", icon: UtensilsCrossed },
   { key: "buffet", label: "自助餐", icon: Sparkles },
+  { key: "breakfast", label: "早餐店", icon: Leaf },
+  { key: "drink", label: "手搖飲", icon: Zap },
   { key: "cook", label: "自己煮", icon: Leaf },
   { key: "favorite", label: "常吃", icon: Star },
 ] as const;
@@ -104,6 +130,20 @@ type CameraState = {
 
 type SelfCookState = {
   selected: string[];
+};
+
+type BreakfastState = {
+  main: string;
+  protein: string[];
+  drink: string;
+  extras: string[];
+};
+
+type DrinkState = {
+  base: string;
+  sugar: string;
+  size: string;
+  toppings: string[];
 };
 
 const lunchboxProteinOptions = [
@@ -204,6 +244,72 @@ const defaultSelfCook: SelfCookState = {
   selected: ['egg', 'chicken', 'broccoli'],
 };
 
+const breakfastMainOptions = [
+  { id: "egg-pancake", label: "原味蛋餅", calories: 280, protein: 11, carbs: 31 },
+  { id: "tuna-toast", label: "鮪魚吐司", calories: 320, protein: 13, carbs: 34 },
+  { id: "ham-burger", label: "火腿蛋漢堡", calories: 390, protein: 18, carbs: 35 },
+  { id: "radish-cake", label: "蘿蔔糕", calories: 260, protein: 5, carbs: 34 },
+] as const;
+
+const breakfastProteinOptions = [
+  { id: "egg", label: "加蛋", calories: 70, protein: 6, carbs: 1 },
+  { id: "tuna", label: "鮪魚", calories: 90, protein: 8, carbs: 1 },
+  { id: "cheese", label: "起司", calories: 60, protein: 4, carbs: 1 },
+  { id: "chicken", label: "雞胸", calories: 110, protein: 20, carbs: 1 },
+] as const;
+
+const breakfastDrinkOptions = [
+  { id: "soy", label: "無糖豆漿", calories: 80, protein: 7, carbs: 8 },
+  { id: "milk-tea", label: "微糖奶茶", calories: 190, protein: 3, carbs: 33 },
+  { id: "black-tea", label: "無糖紅茶", calories: 0, protein: 0, carbs: 0 },
+  { id: "latte", label: "小杯拿鐵", calories: 110, protein: 6, carbs: 9 },
+] as const;
+
+const breakfastExtraOptions = [
+  { id: "hashbrown", label: "薯餅", calories: 124, protein: 1.5, carbs: 15 },
+  { id: "bacon", label: "培根", calories: 86, protein: 6, carbs: 0 },
+  { id: "corn", label: "玉米", calories: 55, protein: 2, carbs: 11 },
+] as const;
+
+const defaultBreakfast: BreakfastState = {
+  main: "egg-pancake",
+  protein: ["egg"],
+  drink: "soy",
+  extras: [],
+};
+
+const drinkBaseOptions = [
+  { id: "black-tea", label: "紅茶", calories: 12, protein: 0, carbs: 3 },
+  { id: "green-tea", label: "綠茶", calories: 8, protein: 0, carbs: 2 },
+  { id: "milk-tea", label: "奶茶", calories: 160, protein: 3, carbs: 28 },
+  { id: "latte", label: "拿鐵", calories: 145, protein: 7, carbs: 14 },
+] as const;
+
+const drinkSugarOptions = [
+  { id: "none", label: "無糖", calories: 0, protein: 0, carbs: 0 },
+  { id: "low", label: "微糖", calories: 45, protein: 0, carbs: 11 },
+  { id: "half", label: "半糖", calories: 85, protein: 0, carbs: 21 },
+  { id: "full", label: "全糖", calories: 130, protein: 0, carbs: 32 },
+] as const;
+
+const drinkSizeOptions = [
+  { id: "medium", label: "中杯", multiplier: 1 },
+  { id: "large", label: "大杯", multiplier: 1.25 },
+] as const;
+
+const drinkToppingOptions = [
+  { id: "pearls", label: "珍珠", calories: 120, protein: 0, carbs: 28 },
+  { id: "grass-jelly", label: "仙草", calories: 35, protein: 0, carbs: 8 },
+  { id: "aiyu", label: "愛玉", calories: 20, protein: 0, carbs: 5 },
+] as const;
+
+const defaultDrink: DrinkState = {
+  base: "milk-tea",
+  sugar: "low",
+  size: "large",
+  toppings: ["pearls"],
+};
+
 const defaultProfile: UserProfile = {
   email: "",
   goal: "維持",
@@ -220,7 +326,7 @@ function barStyle(value: number, total: number, color: string) {
   return { width: `${percent(value, total)}%`, backgroundColor: color };
 }
 
-function makeLog(food: FoodItem, mealType: MealType, createdAt = new Date().toISOString()): MealLog {
+function makeLog(food: FoodItem, mealType: MealType, createdAt = formatLocalIso()): MealLog {
   return {
     id: `${food.id}-${createdAt}`,
     mealType,
@@ -240,8 +346,18 @@ function scaleFood(food: FoodItem, quantity: number): FoodItem {
   };
 }
 
-function byRecency<T extends { createdAt: string }>(items: T[]) {
-  return [...items].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+function formatLocalIso(date = new Date()) {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const offsetRemainder = Math.abs(offsetMinutes) % 60;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}.${String(date.getMilliseconds()).padStart(3, "0")}${sign}${String(offsetHours).padStart(2, "0")}:${String(offsetRemainder).padStart(2, "0")}`;
+}
+
+function makeCarryOverLogIso(now = new Date()) {
+  const carryOver = new Date(now);
+  carryOver.setHours(2, 0, 0, 0);
+  return formatLocalIso(carryOver);
 }
 
 function FoodEmoji({ category }: { category: FoodItem["category"] }) {
@@ -250,15 +366,34 @@ function FoodEmoji({ category }: { category: FoodItem["category"] }) {
   return <span className="text-xl leading-none">{emoji}</span>;
 }
 
+function FoodSourceBadge({ food }: { food: FoodItem }) {
+  const meta = getFoodSourceMeta(food);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium",
+        meta.tone === "solid" ? "bg-[#EEF7F0] text-[#2FA56F]" : "bg-[#FFF5DE] text-[#8A6B1F]",
+      )}
+      title={meta.hint}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 function SectionTitle({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   return (
     <div className="flex items-center justify-between">
       <h3 className="text-[1rem] font-semibold tracking-[-0.01em] text-[#1F1F1C]">{title}</h3>
       {action ? (
-        <button onClick={onAction} className="flex items-center gap-1 text-sm font-medium text-[#2F80ED]">
-          {action}
-          <ChevronRight className="h-4 w-4" />
-        </button>
+        onAction ? (
+          <button onClick={onAction} className="flex items-center gap-1 text-sm font-medium text-[#2F80ED]">
+            {action}
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <span className="text-sm font-medium text-[#615D59]">{action}</span>
+        )
       ) : null}
     </div>
   );
@@ -297,6 +432,8 @@ export default function NutritionMvpPage() {
   const [buffet, setBuffet] = useState<BuffetState>(defaultBuffet);
   const [cameraState, setCameraState] = useState<CameraState>(defaultCamera);
   const [selfCook, setSelfCook] = useState<SelfCookState>(defaultSelfCook);
+  const [breakfast, setBreakfast] = useState<BreakfastState>(defaultBreakfast);
+  const [drinkOrder, setDrinkOrder] = useState<DrinkState>(defaultDrink);
   const [lunchbox, setLunchbox] = useState<LunchboxState>(defaultLunchbox);
   const [ocrDraft, setOcrDraft] = useState<OcrDraft>({
     name: "全聯高蛋白豆奶",
@@ -381,8 +518,18 @@ export default function NutritionMvpPage() {
     };
   }, [supabaseAuth]);
 
+  const nowIso = formatLocalIso();
+  const todaySummary = useMemo(() => summarizeBusinessDay(logs, nowIso), [logs, nowIso]);
+  const todayLogs = useMemo(() => todaySummary.filteredLogs, [todaySummary]);
+  const recentFoods = useMemo(() => deriveRecentFoods(logs, 6), [logs]);
+  const businessDayLabel = useMemo(
+    () => deriveBusinessDayLabel({ businessDayKey: todaySummary.businessDayKey, nowIso, carryOverCount: todaySummary.carryOverCount }),
+    [todaySummary, nowIso],
+  );
+  const homeQuickActions = useMemo(() => deriveHomeQuickActions(logs, nowIso), [logs, nowIso]);
+
   const totals = useMemo(() => {
-    return logs.reduce(
+    return todayLogs.reduce(
       (acc, log) => {
         acc.calories += log.food.calories;
         acc.protein += log.food.protein;
@@ -391,20 +538,13 @@ export default function NutritionMvpPage() {
       },
       { calories: 0, protein: 0, carbs: 0 },
     );
-  }, [logs]);
+  }, [todayLogs]);
 
   const activeTarget = {
     calories: profile?.calorieTarget ?? DAILY_TARGET.calories,
     protein: profile?.proteinTarget ?? DAILY_TARGET.protein,
     carbs: profile?.carbTarget ?? DAILY_TARGET.carbs,
   };
-
-  const breakfastTotal = useMemo(
-    () => logs.filter((log) => log.mealType === "早餐").reduce((sum, log) => sum + log.food.calories, 0),
-    [logs],
-  );
-
-  const todayLogs = useMemo(() => byRecency(logs), [logs]);
 
   const lunchboxEstimate = useMemo(() => {
     const selectedProtein = lunchboxProteinOptions.find((item) => item.id === lunchbox.protein)!;
@@ -470,6 +610,43 @@ export default function NutritionMvpPage() {
     );
   }, [selfCook]);
 
+  const breakfastEstimate = useMemo(() => {
+    const main = breakfastMainOptions.find((item) => item.id === breakfast.main)!;
+    const proteins = breakfastProteinOptions.filter((item) => breakfast.protein.includes(item.id));
+    const drink = breakfastDrinkOptions.find((item) => item.id === breakfast.drink)!;
+    const extras = breakfastExtraOptions.filter((item) => breakfast.extras.includes(item.id));
+    return [main, ...proteins, drink, ...extras].reduce(
+      (acc, item) => {
+        acc.calories += item.calories;
+        acc.protein += item.protein;
+        acc.carbs += item.carbs;
+        return acc;
+      },
+      { calories: 0, protein: 0, carbs: 0 },
+    );
+  }, [breakfast]);
+
+  const drinkEstimate = useMemo(() => {
+    const base = drinkBaseOptions.find((item) => item.id === drinkOrder.base)!;
+    const sugar = drinkSugarOptions.find((item) => item.id === drinkOrder.sugar)!;
+    const size = drinkSizeOptions.find((item) => item.id === drinkOrder.size)!;
+    const toppings = drinkToppingOptions.filter((item) => drinkOrder.toppings.includes(item.id));
+    const raw = [base, sugar, ...toppings].reduce(
+      (acc, item) => {
+        acc.calories += item.calories;
+        acc.protein += item.protein;
+        acc.carbs += item.carbs;
+        return acc;
+      },
+      { calories: 0, protein: 0, carbs: 0 },
+    );
+    return {
+      calories: Math.round(raw.calories * size.multiplier),
+      protein: Math.round(raw.protein * size.multiplier * 10) / 10,
+      carbs: Math.round(raw.carbs * size.multiplier * 10) / 10,
+    };
+  }, [drinkOrder]);
+
   const addLog = (food: FoodItem, mealType: MealType = "點心") => {
     service.addLog(makeLog(food, mealType));
     refreshSnapshot();
@@ -486,8 +663,8 @@ export default function NutritionMvpPage() {
     rememberSearch(keyword);
   };
 
-  const openDetail = (food: FoodItem, mealType: MealType = "點心", editingLogId?: string) => {
-    setDetailDraft({ food, mealType, quantity: 1, editingLogId });
+  const openDetail = (food: FoodItem, mealType: MealType = "點心", editingLogId?: string, createdAtOverride?: string) => {
+    setDetailDraft({ food, mealType, quantity: 1, editingLogId, createdAtOverride });
     setScreen("detail");
   };
 
@@ -511,7 +688,9 @@ export default function NutritionMvpPage() {
       setScreen("home");
       return;
     }
-    addLog(finalFood, detailDraft.mealType);
+    service.addLog(makeLog(finalFood, detailDraft.mealType, detailDraft.createdAtOverride ?? formatLocalIso()));
+    refreshSnapshot();
+    setScreen("home");
   };
 
   const editLog = (log: MealLog) => {
@@ -522,6 +701,34 @@ export default function NutritionMvpPage() {
   const deleteLog = (id: string) => {
     service.saveLogs(logs.filter((log) => log.id !== id));
     refreshSnapshot();
+  };
+
+  const runHomeQuickAction = (action: { targetScreen: string }) => {
+    if (action.targetScreen === "breakfast") {
+      setScreen("breakfast");
+      return;
+    }
+    if (action.targetScreen === "search") {
+      setSearchQuery("便當");
+      setScreen("search");
+      return;
+    }
+    if (action.targetScreen === "buffet") {
+      setScreen("buffet");
+      return;
+    }
+    if (action.targetScreen === "drink") {
+      setScreen("drink");
+      return;
+    }
+    if (action.targetScreen === "detail" && homeQuickActions.continueLog) {
+      openDetail(homeQuickActions.continueLog.food, "點心", undefined, makeCarryOverLogIso());
+    }
+  };
+
+  const continueLastMeal = () => {
+    if (!homeQuickActions.continueLog) return;
+    openDetail(homeQuickActions.continueLog.food, homeQuickActions.continueLog.mealType);
   };
 
   const completeLogin = () => {
@@ -576,7 +783,7 @@ export default function NutritionMvpPage() {
   };
 
   const addOcrDraft = () => {
-    const createdAt = new Date().toISOString();
+    const createdAt = formatLocalIso();
     const draftFood: FoodItem = {
       id: `ocr-${Date.now()}`,
       name: ocrDraft.name,
@@ -599,7 +806,7 @@ export default function NutritionMvpPage() {
     const selectedProtein = lunchboxProteinOptions.find((item) => item.id === lunchbox.protein)!;
     const selectedStarch = lunchboxStarchOptions.find((item) => item.id === lunchbox.starch)!;
     const food: FoodItem = {
-      id: `lunchbox-${Date.now()}`,
+      id: `lunchbox-${lunchbox.protein}-${lunchbox.starch}-${lunchbox.vegetables.join("-")}-${lunchbox.sauces.join("-")}-${lunchbox.extras.join("-")}`,
       name: `${selectedProtein.label}健康餐盒`,
       brand: "MVP 估算",
       calories: lunchboxEstimate.calories,
@@ -617,7 +824,7 @@ export default function NutritionMvpPage() {
     const proteinCount = buffet.protein.length;
     const vegetableCount = buffet.vegetables.length;
     const food: FoodItem = {
-      id: `buffet-${Date.now()}`,
+      id: `buffet-${buffet.staple}-${buffet.protein.join("-")}-${buffet.vegetables.join("-")}-${buffet.extras.join("-")}`,
       name: `自助餐組合`,
       brand: "MVP 估算",
       calories: buffetEstimate.calories,
@@ -632,7 +839,7 @@ export default function NutritionMvpPage() {
 
   const addCameraMeal = () => {
     const food: FoodItem = {
-      id: `camera-${Date.now()}`,
+      id: `camera-${cameraState.items.map((item) => item.id).join("-")}`,
       name: '拍照辨識餐盤',
       brand: 'MVP 估算',
       calories: cameraEstimate.calories,
@@ -648,7 +855,7 @@ export default function NutritionMvpPage() {
   const addSelfCookMeal = () => {
     const selected = selfCookOptions.filter((item) => selfCook.selected.includes(item.id));
     const food: FoodItem = {
-      id: `cook-${Date.now()}`,
+      id: `cook-${selfCook.selected.join("-")}`,
       name: '自己煮組合',
       brand: 'MVP 估算',
       calories: selfCookEstimate.calories,
@@ -659,6 +866,45 @@ export default function NutritionMvpPage() {
       sourceType: 'template',
     };
     addLog(food, '晚餐');
+  };
+
+  const addBreakfastMeal = () => {
+    const main = breakfastMainOptions.find((item) => item.id === breakfast.main)!;
+    const drink = breakfastDrinkOptions.find((item) => item.id === breakfast.drink)!;
+    const proteins = breakfastProteinOptions.filter((item) => breakfast.protein.includes(item.id));
+    const extras = breakfastExtraOptions.filter((item) => breakfast.extras.includes(item.id));
+    const servingParts = [main.label, ...proteins.map((item) => item.label), drink.label, ...extras.map((item) => item.label)];
+    const food: FoodItem = {
+      id: `breakfast-${breakfast.main}-${breakfast.protein.join("-")}-${breakfast.drink}-${breakfast.extras.join("-")}`,
+      name: `早餐店組合`,
+      brand: '早餐店估算',
+      calories: breakfastEstimate.calories,
+      protein: breakfastEstimate.protein,
+      carbs: breakfastEstimate.carbs,
+      serving: servingParts.join(' / '),
+      category: 'meal',
+      sourceType: 'template',
+    };
+    addLog(food, '早餐');
+  };
+
+  const addDrinkMeal = () => {
+    const base = drinkBaseOptions.find((item) => item.id === drinkOrder.base)!;
+    const size = drinkSizeOptions.find((item) => item.id === drinkOrder.size)!;
+    const sugar = drinkSugarOptions.find((item) => item.id === drinkOrder.sugar)!;
+    const toppings = drinkToppingOptions.filter((item) => drinkOrder.toppings.includes(item.id));
+    const food: FoodItem = {
+      id: `drink-${drinkOrder.base}-${drinkOrder.sugar}-${drinkOrder.size}-${drinkOrder.toppings.join("-")}`,
+      name: `${size.label}${base.label}`,
+      brand: '手搖飲估算',
+      calories: drinkEstimate.calories,
+      protein: drinkEstimate.protein,
+      carbs: drinkEstimate.carbs,
+      serving: [sugar.label, ...toppings.map((item) => item.label)].join(' / '),
+      category: 'drink',
+      sourceType: 'template',
+    };
+    addLog(food, '點心');
   };
 
   const startScanDemo = (result: "found" | "not-found") => {
@@ -702,14 +948,21 @@ export default function NutritionMvpPage() {
             profile={profile}
             logs={todayLogs}
             totals={totals}
-            breakfastTotal={breakfastTotal}
+            businessDayLabel={businessDayLabel}
+            carryOverCount={todaySummary.carryOverCount}
+            homeQuickActions={homeQuickActions}
             frequentFoods={frequentFoods}
+            recentFoods={recentFoods}
+            onRunHomeQuickAction={runHomeQuickAction}
+            onContinueLastMeal={continueLastMeal}
             onOpenScan={() => startScanDemo("found")}
             onOpenLunchbox={() => setScreen("lunchbox")}
             onOpenOcr={() => setScreen("ocr")}
             onOpenSearch={() => setScreen("search")}
             onOpenBuffet={() => setScreen("buffet")}
             onOpenCamera={() => setScreen("camera")}
+            onOpenBreakfast={() => setScreen("breakfast")}
+            onOpenDrink={() => setScreen("drink")}
             onOpenCook={() => setScreen("cook")}
             onOpenSelector={() => setScreen("selector")}
             onOpenFavorites={() => setScreen("favorites")}
@@ -756,6 +1009,7 @@ export default function NutritionMvpPage() {
             foods={searchableFoods}
             recentSearches={recentSearches}
             recommendedFoods={frequentFoods}
+            recentFoods={recentFoods}
             onBack={() => setScreen("home")}
             onChangeQuery={setSearchQuery}
             onSelectKeyword={openSearchKeyword}
@@ -789,6 +1043,24 @@ export default function NutritionMvpPage() {
             onSubmit={addSelfCookMeal}
           />
         ) : null}
+        {screen === "breakfast" ? (
+          <BreakfastScreen
+            state={breakfast}
+            estimate={breakfastEstimate}
+            onBack={() => setScreen("home")}
+            onChange={setBreakfast}
+            onSubmit={addBreakfastMeal}
+          />
+        ) : null}
+        {screen === "drink" ? (
+          <DrinkScreen
+            state={drinkOrder}
+            estimate={drinkEstimate}
+            onBack={() => setScreen("home")}
+            onChange={setDrinkOrder}
+            onSubmit={addDrinkMeal}
+          />
+        ) : null}
         {screen === "selector" ? (
           <FlowSelectorScreen
             onBack={() => setScreen("home")}
@@ -819,7 +1091,14 @@ export default function NutritionMvpPage() {
             onSubmit={saveDetail}
           />
         ) : null}
-        {screen === "history" ? <HistoryScreen logs={todayLogs} onBack={() => setScreen("home")} onOpenSelector={() => setScreen("selector")} /> : null}
+        {screen === "history" ? (
+          <HistoryScreen
+            logs={logs}
+            businessDayLabel={businessDayLabel}
+            onBack={() => setScreen("home")}
+            onOpenSelector={() => setScreen("selector")}
+          />
+        ) : null}
         </div>
       </div>
     </div>
@@ -1004,15 +1283,22 @@ function HomeScreen({
   target,
   profile,
   totals,
-  breakfastTotal,
+  businessDayLabel,
+  carryOverCount,
+  homeQuickActions,
   frequentFoods,
+  recentFoods,
   logs,
+  onRunHomeQuickAction,
+  onContinueLastMeal,
   onOpenScan,
   onOpenLunchbox,
   onOpenOcr,
   onOpenSearch,
   onOpenBuffet,
   onOpenCamera,
+  onOpenBreakfast,
+  onOpenDrink,
   onOpenCook,
   onOpenSelector,
   onOpenFavorites,
@@ -1025,15 +1311,22 @@ function HomeScreen({
   target: { calories: number; protein: number; carbs: number };
   profile: UserProfile | null;
   totals: { calories: number; protein: number; carbs: number };
-  breakfastTotal: number;
+  businessDayLabel: string;
+  carryOverCount: number;
+  homeQuickActions: ReturnType<typeof deriveHomeQuickActions>;
   frequentFoods: FoodItem[];
+  recentFoods: FoodItem[];
   logs: MealLog[];
+  onRunHomeQuickAction: (action: ReturnType<typeof deriveHomeQuickActions>["primary"]) => void;
+  onContinueLastMeal: () => void;
   onOpenScan: () => void;
   onOpenLunchbox: () => void;
   onOpenOcr: () => void;
   onOpenSearch: () => void;
   onOpenBuffet: () => void;
   onOpenCamera: () => void;
+  onOpenBreakfast: () => void;
+  onOpenDrink: () => void;
   onOpenCook: () => void;
   onOpenSelector: () => void;
   onOpenFavorites: () => void;
@@ -1043,6 +1336,10 @@ function HomeScreen({
   onEditLog: (log: MealLog) => void;
   onDeleteLog: (id: string) => void;
 }) {
+  const mealGroups = (["早餐", "午餐", "晚餐", "點心"] as MealType[])
+    .map((mealType) => ({ mealType, items: logs.filter((log) => log.mealType === mealType) }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div className="space-y-4 text-[#1F1F1C]">
       <div className="flex items-start justify-between">
@@ -1052,7 +1349,7 @@ function HomeScreen({
             飲食紀錄助手
           </div>
           <h2 className="mt-3 text-[1.9rem] font-semibold tracking-[-0.03em]">今天吃得怎麼樣？</h2>
-          <div className="mt-1 flex items-center gap-2 text-sm text-[#615D59]">{profile?.goal ?? '維持'}模式 ・ {target.calories} kcal</div>
+          <div className="mt-1 flex items-center gap-2 text-sm text-[#615D59]">{profile?.goal ?? '維持'}模式 ・ {target.calories} kcal ・ {businessDayLabel}</div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onOpenSettings} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-black/6">
@@ -1064,8 +1361,8 @@ function HomeScreen({
 
       <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-[#1F1F1C]">今日進度</span>
-          <span className="text-sm text-[#2F80ED]">查看詳情</span>
+          <span className="text-sm font-semibold text-[#1F1F1C]">{businessDayLabel}進度</span>
+          <span className="text-sm text-[#2F80ED]">凌晨 4 點切日</span>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3">
           <MetricCard label="熱量" value={`${totals.calories}`} total={`${target.calories}`} unit="kcal" color="#E6B86A" />
@@ -1073,20 +1370,52 @@ function HomeScreen({
           <MetricCard label="碳水" value={`${totals.carbs}`} total={`${target.carbs}`} unit="g" color="#2F80ED" />
         </div>
         <div className="mt-4 rounded-2xl bg-[#FFF5DE] px-3 py-3 text-sm text-[#7A6733]">
-          蛋白質偏低，再加點優質蛋白會更好喔！
+          {logs.length
+            ? carryOverCount > 0
+              ? `已把凌晨 ${carryOverCount} 筆紀錄算進昨天，晚睡也不用手動切日。`
+              : "今天會以凌晨 4 點作為換日，半夜補記也比較自然。"
+            : `今天還沒開始記。先加第一餐，之後就會越記越順。`}
         </div>
       </div>
 
-      <div className="rounded-[24px] bg-[#EEF7F0] px-4 py-4 shadow-[0_10px_26px_rgba(47,165,111,0.12)] ring-1 ring-[#DDEEDF]">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-2xl shadow-sm">🌿</div>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-[#1F1F1C]">今天蛋白質有顧到，不錯。</div>
-            <div className="mt-1 text-xs text-[#615D59]">小小選擇，累積大改變！</div>
-          </div>
-          <button className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#2FA56F] shadow-sm">
-            <ChevronRight className="h-4 w-4" />
-          </button>
+      <div className="grid gap-3 md:grid-cols-2">
+        <button
+          onClick={() => onRunHomeQuickAction(homeQuickActions.primary)}
+          className="rounded-[24px] bg-[#EEF7F0] px-4 py-4 text-left shadow-[0_10px_26px_rgba(47,165,111,0.12)] ring-1 ring-[#DDEEDF]"
+        >
+          <div className="text-xs font-medium text-[#2FA56F]">現在最自然的一步</div>
+          <div className="mt-2 text-base font-semibold text-[#1F1F1C]">{homeQuickActions.primary.label}</div>
+          <div className="mt-1 text-xs text-[#615D59]">不用想太多，先從這個開始記。</div>
+        </button>
+        <div className="grid gap-3">
+          {homeQuickActions.secondary ? (
+            <button
+              onClick={() => homeQuickActions.secondary && onRunHomeQuickAction(homeQuickActions.secondary)}
+              className="rounded-[20px] bg-white px-4 py-4 text-left shadow-[0_10px_24px_rgba(31,31,28,0.08)] ring-1 ring-black/5"
+            >
+              <div className="text-sm font-semibold text-[#1F1F1C]">{homeQuickActions.secondary.label}</div>
+              <div className="mt-1 text-xs text-[#615D59]">高頻但常漏記的那一筆，順手補上最有價值。</div>
+            </button>
+          ) : null}
+          {homeQuickActions.continueLog ? (
+            <button
+              onClick={onContinueLastMeal}
+              className="rounded-[20px] bg-white px-4 py-4 text-left shadow-[0_10px_24px_rgba(31,31,28,0.08)] ring-1 ring-black/5"
+            >
+              <div className="text-xs font-medium text-[#2F80ED]">快速續記</div>
+              <div className="mt-1 text-sm font-semibold text-[#1F1F1C]">再記一次 {homeQuickActions.continueLog.food.name}</div>
+              <div className="mt-1 text-xs text-[#615D59]">沿用你上一筆餐別與食物，少點一次很有感。</div>
+            </button>
+          ) : null}
+          {homeQuickActions.lateNightCatchUp ? (
+            <button
+              onClick={() => onRunHomeQuickAction(homeQuickActions.lateNightCatchUp!)}
+              className="rounded-[20px] border border-dashed border-[#D9D6D0] bg-[#FCFBF8] px-4 py-4 text-left"
+            >
+              <div className="text-sm font-semibold text-[#1F1F1C]">{homeQuickActions.lateNightCatchUp.label}</div>
+              <div className="mt-1 text-xs text-[#615D59]">只有凌晨時段才出現，避免補記情境搶走首頁主焦點。</div>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1107,11 +1436,15 @@ function HomeScreen({
                         ? onOpenBuffet
                         : key === "camera"
                           ? onOpenCamera
-                          : key === "cook"
-                            ? onOpenCook
-                            : key === "favorite"
-                              ? onOpenFavorites
-                              : onOpenHistory;
+                          : key === "breakfast"
+                            ? onOpenBreakfast
+                            : key === "drink"
+                              ? onOpenDrink
+                              : key === "cook"
+                                ? onOpenCook
+                                : key === "favorite"
+                                  ? onOpenFavorites
+                                  : onOpenHistory;
             return (
               <button key={key} onClick={onClick} className="rounded-[18px] bg-[#F7F5F0] px-2 py-3 text-center">
                 <Icon className="mx-auto h-5 w-5 text-[#2FA56F]" />
@@ -1147,40 +1480,72 @@ function HomeScreen({
         </div>
       </div>
 
-      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
-        <SectionTitle title="今日紀錄" action={`總熱量 ${totals.calories} kcal`} />
-        <div className="mt-3 rounded-[18px] bg-[#F7F5F0] p-3">
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 font-semibold text-[#1F1F1C]">
-              <Sparkles className="h-4 w-4 text-[#2FA56F]" />
-              早餐
-              <span className="font-normal text-[#615D59]">08:00</span>
-            </div>
-            <span className="font-semibold text-[#1F1F1C]">{breakfastTotal} kcal</span>
-          </div>
-          <div className="mt-3 space-y-2">
-            {logs
-              .filter((log) => log.mealType === "早餐")
-              .map((log) => (
-                <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
-                    <FoodEmoji category={log.food.category} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
-                    <div className="truncate text-xs text-[#615D59]">
-                      {log.food.brand ? `${log.food.brand} ｜ ` : ""}
-                      {log.food.serving}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
-                    <button onClick={() => onEditLog(log)} className="rounded-full bg-[#F7F5F0] px-2 py-1 text-[11px] text-[#615D59]">編輯</button>
-                    <button onClick={() => onDeleteLog(log.id)} className="rounded-full bg-[#FFF1F1] px-2 py-1 text-[11px] text-[#D95C5C]">刪除</button>
-                  </div>
+      {recentFoods.length ? (
+        <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+          <SectionTitle title="最近吃過" action="一鍵再吃" />
+          <div className="mt-3 space-y-3">
+            {recentFoods.slice(0, 4).map((food) => (
+              <button
+                key={food.id}
+                onClick={() => onQuickAdd(food)}
+                className="flex w-full items-center gap-3 rounded-[20px] bg-[#F7F5F0] px-3 py-3 text-left"
+              >
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-sm">
+                  <FoodEmoji category={food.category} />
                 </div>
-              ))}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-[#1F1F1C]">{food.name}</div>
+                  <div className="mt-1"><FoodSourceBadge food={food} /></div>
+                </div>
+                <div className="text-sm font-semibold text-[#1F1F1C]">{food.calories} kcal</div>
+              </button>
+            ))}
           </div>
+        </div>
+      ) : null}
+
+      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+        <SectionTitle title={`${businessDayLabel}紀錄`} action={`總熱量 ${totals.calories} kcal`} />
+        <div className="mt-3 space-y-3">
+          {mealGroups.length ? (
+            mealGroups.map(({ mealType, items }) => (
+              <div key={mealType} className="rounded-[18px] bg-[#F7F5F0] p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2 font-semibold text-[#1F1F1C]">
+                    <Sparkles className="h-4 w-4 text-[#2FA56F]" />
+                    {mealType}
+                  </div>
+                  <span className="font-semibold text-[#1F1F1C]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {items.map((log) => (
+                    <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
+                      <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
+                        <FoodEmoji category={log.food.category} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
+                        <div className="truncate text-xs text-[#615D59]">
+                          {log.food.brand ? `${log.food.brand} ｜ ` : ""}
+                          {log.food.serving}
+                        </div>
+                        <div className="mt-1"><FoodSourceBadge food={log.food} /></div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
+                        <button onClick={() => onEditLog(log)} className="rounded-full bg-[#F7F5F0] px-2 py-1 text-[11px] text-[#615D59]">編輯</button>
+                        <button onClick={() => onDeleteLog(log.id)} className="rounded-full bg-[#FFF1F1] px-2 py-1 text-[11px] text-[#D95C5C]">刪除</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-5 text-sm leading-6 text-[#615D59]">
+              這個 {businessDayLabel} 還沒開始記。先加早餐、飲料或常吃食物，之後打開就會更自然。
+            </div>
+          )}
         </div>
       </div>
 
@@ -1561,6 +1926,7 @@ function SearchScreen({
   foods,
   recentSearches,
   recommendedFoods,
+  recentFoods,
   onBack,
   onChangeQuery,
   onSelectKeyword,
@@ -1570,12 +1936,15 @@ function SearchScreen({
   foods: FoodItem[];
   recentSearches: string[];
   recommendedFoods: FoodItem[];
+  recentFoods: FoodItem[];
   onBack: () => void;
   onChangeQuery: (value: string) => void;
   onSelectKeyword: (value: string) => void;
   onSelectFood: (food: FoodItem) => void;
 }) {
   const showDiscovery = !query.trim();
+  const keywordSuggestions = ["超商", "早餐店", "手搖飲", "高蛋白", "便當", "全聯", "無糖"];
+  const categoryTabs = ["超商", "早餐店", "手搖飲", "便當", "高蛋白"];
   return (
     <div className="space-y-4 text-[#1F1F1C]">
       <div className="flex items-center justify-between">
@@ -1597,7 +1966,24 @@ function SearchScreen({
           />
         </div>
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {["雞胸", "飯糰", "豆漿", "全聯", "FamilyMart"].map((keyword) => (
+          {categoryTabs.map((keyword) => {
+            const active = query.trim() === keyword;
+            return (
+              <button
+                key={keyword}
+                onClick={() => onSelectKeyword(keyword)}
+                className={cn(
+                  "rounded-full px-3 py-2 text-xs font-medium",
+                  active ? "bg-[#2FA56F] text-white" : "bg-[#EEF7F0] text-[#2FA56F]",
+                )}
+              >
+                {keyword}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {keywordSuggestions.map((keyword) => (
             <button
               key={keyword}
               onClick={() => onSelectKeyword(keyword)}
@@ -1650,6 +2036,28 @@ function SearchScreen({
         </div>
       ) : null}
 
+      {showDiscovery && recentFoods.length ? (
+        <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+          <SectionTitle title="最近吃過" />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {recentFoods.slice(0, 4).map((food) => (
+              <button
+                key={food.id}
+                onClick={() => onSelectFood(food)}
+                className="rounded-[20px] bg-[#F7F5F0] p-3 text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <FoodEmoji category={food.category} />
+                  <FoodSourceBadge food={food} />
+                </div>
+                <div className="mt-3 truncate text-sm font-semibold text-[#1F1F1C]">{food.name}</div>
+                <div className="mt-1 text-xs text-[#615D59]">{food.calories} kcal</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
         <SectionTitle title={`找到 ${foods.length} 筆結果`} />
         <div className="mt-3 space-y-3">
@@ -1663,7 +2071,10 @@ function SearchScreen({
                 <FoodEmoji category={food.category} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-[#1F1F1C]">{food.name}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="truncate text-sm font-semibold text-[#1F1F1C]">{food.name}</div>
+                  <FoodSourceBadge food={food} />
+                </div>
                 <div className="truncate text-xs text-[#615D59]">{food.brand ? `${food.brand} ｜ ` : ""}{food.serving}</div>
                 <div className="mt-1 text-xs text-[#615D59]">{food.calories} kcal ・ 蛋白質 {food.protein} g ・ 碳水 {food.carbs} g</div>
               </div>
@@ -1674,7 +2085,7 @@ function SearchScreen({
           ))}
           {!foods.length ? (
             <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-4 text-sm leading-6 text-[#615D59]">
-              目前找不到這個品項。可以先去掃條碼，或直接拍營養標示建檔。
+              目前找不到這個品項。你可以改搜品牌、分類或俗稱，例如：超商、早餐店、手搖飲、珍奶。
             </div>
           ) : null}
         </div>
@@ -1860,6 +2271,127 @@ function SelfCookScreen({
   );
 }
 
+function BreakfastScreen({
+  state,
+  estimate,
+  onBack,
+  onChange,
+  onSubmit,
+}: {
+  state: BreakfastState;
+  estimate: { calories: number; protein: number; carbs: number };
+  onBack: () => void;
+  onChange: (value: BreakfastState) => void;
+  onSubmit: () => void;
+}) {
+  const toggleGroup = (group: "protein" | "extras", id: string) => {
+    const current = state[group];
+    const exists = current.includes(id);
+    onChange({ ...state, [group]: exists ? current.filter((item) => item !== id) : [...current, id] });
+  };
+
+  return (
+    <div className="space-y-4 text-[#1F1F1C] pb-24">
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-black/6"><ArrowLeft className="h-4 w-4" /></button>
+        <div className="text-base font-semibold">早餐店</div>
+        <div className="w-10" />
+      </div>
+      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+        <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em]">今天早餐怎麼吃？</h2>
+        <p className="mt-1 text-sm text-[#615D59]">先抓主食、蛋白和飲料，5 秒內記完。</p>
+
+        <ChoiceSection title="1 主食（選 1 種）">
+          <ChipGrid items={breakfastMainOptions} selected={[state.main]} onClick={(id) => onChange({ ...state, main: id })} />
+        </ChoiceSection>
+        <ChoiceSection title={`2 蛋白加強（可複選）`} action={`已選 ${state.protein.length} 種`}>
+          <ChipGrid items={breakfastProteinOptions} selected={state.protein} onClick={(id) => toggleGroup("protein", id)} compact />
+        </ChoiceSection>
+        <ChoiceSection title="3 飲料（選 1 種）">
+          <ChipGrid items={breakfastDrinkOptions} selected={[state.drink]} onClick={(id) => onChange({ ...state, drink: id })} compact />
+        </ChoiceSection>
+        <ChoiceSection title="4 加點">
+          <ChipGrid items={breakfastExtraOptions} selected={state.extras} onClick={(id) => toggleGroup("extras", id)} compact />
+        </ChoiceSection>
+
+        <div className="mt-5 rounded-[24px] bg-[#FFF7E7] p-4 ring-1 ring-[#F0E0B8]">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-[#1F1F1C]">早餐估算</div>
+            <span className="text-xs text-[#8A6B1F]">估算模板</span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <EstimateTile label="熱量" value={`約 ${estimate.calories} kcal`} />
+            <EstimateTile label="蛋白質" value={`約 ${estimate.protein} g`} />
+            <EstimateTile label="碳水" value={`約 ${estimate.carbs} g`} />
+          </div>
+          <div className="mt-3 text-xs leading-5 text-[#615D59]">早餐店醬料和份量差很多，先抓 8 成就夠。</div>
+        </div>
+      </div>
+      <button onClick={onSubmit} className="fixed bottom-8 left-1/2 w-[calc(100%-3rem)] max-w-[342px] -translate-x-1/2 rounded-[22px] bg-[#2FA56F] px-4 py-4 text-base font-semibold text-white shadow-[0_18px_34px_rgba(47,165,111,0.24)]">加入早餐紀錄</button>
+    </div>
+  );
+}
+
+function DrinkScreen({
+  state,
+  estimate,
+  onBack,
+  onChange,
+  onSubmit,
+}: {
+  state: DrinkState;
+  estimate: { calories: number; protein: number; carbs: number };
+  onBack: () => void;
+  onChange: (value: DrinkState) => void;
+  onSubmit: () => void;
+}) {
+  const toggleTopping = (id: string) => {
+    const exists = state.toppings.includes(id);
+    onChange({ ...state, toppings: exists ? state.toppings.filter((item) => item !== id) : [...state.toppings, id] });
+  };
+
+  return (
+    <div className="space-y-4 text-[#1F1F1C] pb-24">
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-sm ring-1 ring-black/6"><ArrowLeft className="h-4 w-4" /></button>
+        <div className="text-base font-semibold">手搖飲</div>
+        <div className="w-10" />
+      </div>
+      <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
+        <h2 className="text-[1.7rem] font-semibold tracking-[-0.03em]">今天喝哪一杯？</h2>
+        <p className="mt-1 text-sm text-[#615D59]">直接選茶底、甜度、大小和配料，比亂猜好很多。</p>
+
+        <ChoiceSection title="1 茶底 / 飲品">
+          <ChipGrid items={drinkBaseOptions} selected={[state.base]} onClick={(id) => onChange({ ...state, base: id })} />
+        </ChoiceSection>
+        <ChoiceSection title="2 甜度">
+          <ChipGrid items={drinkSugarOptions} selected={[state.sugar]} onClick={(id) => onChange({ ...state, sugar: id })} compact />
+        </ChoiceSection>
+        <ChoiceSection title="3 大小杯">
+          <ChipGrid items={drinkSizeOptions} selected={[state.size]} onClick={(id) => onChange({ ...state, size: id })} compact />
+        </ChoiceSection>
+        <ChoiceSection title={`4 配料`} action={`已選 ${state.toppings.length} 樣`}>
+          <ChipGrid items={drinkToppingOptions} selected={state.toppings} onClick={toggleTopping} compact />
+        </ChoiceSection>
+
+        <div className="mt-5 rounded-[24px] bg-[#FFF7E7] p-4 ring-1 ring-[#F0E0B8]">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-[#1F1F1C]">手搖飲估算</div>
+            <span className="text-xs text-[#8A6B1F]">估算模板</span>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <EstimateTile label="熱量" value={`約 ${estimate.calories} kcal`} />
+            <EstimateTile label="蛋白質" value={`約 ${estimate.protein} g`} />
+            <EstimateTile label="碳水" value={`約 ${estimate.carbs} g`} />
+          </div>
+          <div className="mt-3 text-xs leading-5 text-[#615D59]">真正差異通常在甜度和配料，這兩個有選就已經準很多。</div>
+        </div>
+      </div>
+      <button onClick={onSubmit} className="fixed bottom-8 left-1/2 w-[calc(100%-3rem)] max-w-[342px] -translate-x-1/2 rounded-[22px] bg-[#2FA56F] px-4 py-4 text-base font-semibold text-white shadow-[0_18px_34px_rgba(47,165,111,0.24)]">加入飲料紀錄</button>
+    </div>
+  );
+}
+
 function FlowSelectorScreen({
   onBack,
   onPick,
@@ -1872,6 +2404,8 @@ function FlowSelectorScreen({
     { screen: 'search', label: '搜尋食物', desc: '知道名字就直接找' },
     { screen: 'ocr', label: '拍營養標示', desc: '找不到商品就用這個' },
     { screen: 'camera', label: '拍照辨識', desc: '先猜候選，再快速補正' },
+    { screen: 'breakfast', label: '早餐店', desc: '主食、蛋白、飲料直接組' },
+    { screen: 'drink', label: '手搖飲', desc: '甜度、大小、配料直接選' },
     { screen: 'lunchbox', label: '健康餐盒', desc: '幾秒內選完' },
     { screen: 'buffet', label: '自助餐', desc: '先抓 8 成方向' },
     { screen: 'cook', label: '自己煮', desc: '用食材快速組裝' },
@@ -1973,6 +2507,7 @@ function DetailScreen({
             <EstimateTile label="蛋白質" value={`${scaleFood(draft.food, draft.quantity).protein} g`} />
             <EstimateTile label="碳水" value={`${scaleFood(draft.food, draft.quantity).carbs} g`} />
           </div>
+          {draft.createdAtOverride ? <div className="mt-3 text-xs leading-5 text-[#615D59]">這筆會補進昨天宵夜，不會算到今天。</div> : null}
         </div>
       </div>
 
@@ -1983,12 +2518,50 @@ function DetailScreen({
   );
 }
 
-function HistoryScreen({ logs, onBack, onOpenSelector }: { logs: MealLog[]; onBack: () => void; onOpenSelector: () => void }) {
+function HistoryScreen({
+  logs,
+  businessDayLabel,
+  onBack,
+  onOpenSelector,
+}: {
+  logs: MealLog[];
+  businessDayLabel: string;
+  onBack: () => void;
+  onOpenSelector: () => void;
+}) {
   const [mode, setMode] = useState<'day' | 'week'>('day');
-  const totalCalories = logs.reduce((sum, log) => sum + log.food.calories, 0);
-  const totalProtein = logs.reduce((sum, log) => sum + log.food.protein, 0);
-  const totalCarbs = logs.reduce((sum, log) => sum + log.food.carbs, 0);
-  const grouped = logs.reduce<Record<string, MealLog[]>>((acc, log) => {
+  const dailySummaries = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof summarizeBusinessDay>>();
+    for (const log of logs) {
+      const key = getBusinessDayKey(log.createdAt);
+      if (!map.has(key)) {
+        map.set(key, summarizeBusinessDay(logs, log.createdAt));
+      }
+    }
+    return [...map.values()].sort((a, b) => b.businessDayKey.localeCompare(a.businessDayKey));
+  }, [logs]);
+
+  const currentDay = dailySummaries[0] ?? summarizeBusinessDay([], formatLocalIso());
+  const recentDays = dailySummaries.slice(0, 7);
+  const currentTotals = currentDay.filteredLogs.reduce(
+    (acc, log) => {
+      acc.calories += log.food.calories;
+      acc.protein += log.food.protein;
+      acc.carbs += log.food.carbs;
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0 },
+  );
+  const weekTotals = recentDays.reduce(
+    (acc, day) => {
+      acc.calories += day.filteredLogs.reduce((sum, log) => sum + log.food.calories, 0);
+      acc.protein += day.filteredLogs.reduce((sum, log) => sum + log.food.protein, 0);
+      acc.carbs += day.filteredLogs.reduce((sum, log) => sum + log.food.carbs, 0);
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0 },
+  );
+  const grouped = currentDay.filteredLogs.reduce<Record<string, MealLog[]>>((acc, log) => {
     const key = log.mealType;
     acc[key] = acc[key] ? [...acc[key], log] : [log];
     return acc;
@@ -2014,39 +2587,63 @@ function HistoryScreen({ logs, onBack, onOpenSelector }: { logs: MealLog[]; onBa
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
-          <EstimateTile label={mode === 'day' ? '今日熱量' : '本週平均'} value={`${mode === 'day' ? totalCalories : Math.round(totalCalories / 7)} kcal`} />
-          <EstimateTile label="蛋白質" value={`${mode === 'day' ? totalProtein : Math.round((totalProtein / 7) * 10) / 10} g`} />
-          <EstimateTile label="碳水" value={`${mode === 'day' ? totalCarbs : Math.round((totalCarbs / 7) * 10) / 10} g`} />
+          <EstimateTile label={mode === 'day' ? `${businessDayLabel}熱量` : '近 7 天平均'} value={`${mode === 'day' ? currentTotals.calories : Math.round(weekTotals.calories / Math.max(recentDays.length, 1))} kcal`} />
+          <EstimateTile label="蛋白質" value={`${mode === 'day' ? currentTotals.protein : Math.round((weekTotals.protein / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
+          <EstimateTile label="碳水" value={`${mode === 'day' ? currentTotals.carbs : Math.round((weekTotals.carbs / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
         </div>
 
         <div className="mt-4 rounded-[20px] bg-[#EEF7F0] px-4 py-3 text-sm text-[#3F7850]">
-          {mode === 'day' ? '今天有持續記錄，已經很不錯。' : '這週先看趨勢，不用追求每天都完美。'}
+          {mode === 'day' ? `目前用凌晨 4 點切日，${businessDayLabel}的紀錄會更符合晚睡習慣。` : '近 7 天先看趨勢，不用被單日波動影響。'}
         </div>
 
-        <div className="mt-4 space-y-3">
-          {Object.entries(grouped).map(([mealType, items]) => (
-            <div key={mealType} className="rounded-[20px] bg-[#F7F5F0] p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-[#1F1F1C]">{mealType}</div>
-                <div className="text-xs text-[#615D59]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</div>
-              </div>
-              <div className="mt-2 space-y-2">
-                {items.map((log) => (
-                  <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
-                      <FoodEmoji category={log.food.category} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
-                      <div className="truncate text-xs text-[#615D59]">{log.food.serving}</div>
-                    </div>
-                    <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
+        {mode === 'day' ? (
+          <div className="mt-4 space-y-3">
+            {Object.entries(grouped).length ? (
+              Object.entries(grouped).map(([mealType, items]) => (
+                <div key={mealType} className="rounded-[20px] bg-[#F7F5F0] p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-[#1F1F1C]">{mealType}</div>
+                    <div className="text-xs text-[#615D59]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</div>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+                  <div className="mt-2 space-y-2">
+                    {items.map((log) => (
+                      <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
+                        <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
+                          <FoodEmoji category={log.food.category} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
+                          <div className="truncate text-xs text-[#615D59]">{log.food.serving}</div>
+                        </div>
+                        <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-4 text-sm leading-6 text-[#615D59]">這個 {businessDayLabel} 還沒有紀錄。</div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {recentDays.map((day) => {
+              const label = deriveBusinessDayLabel({ businessDayKey: day.businessDayKey, nowIso: formatLocalIso(), carryOverCount: day.carryOverCount });
+              const calories = day.filteredLogs.reduce((sum, log) => sum + log.food.calories, 0);
+              return (
+                <div key={day.businessDayKey} className="rounded-[20px] bg-[#F7F5F0] p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-[#1F1F1C]">{label}</div>
+                      <div className="mt-1 text-xs text-[#615D59]">{day.totalCount} 筆紀錄{day.carryOverCount ? ` ・ 含 ${day.carryOverCount} 筆凌晨` : ''}</div>
+                    </div>
+                    <div className="text-sm font-semibold text-[#1F1F1C]">{calories} kcal</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <BottomNav active="歷史" onHome={onBack} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
     </div>

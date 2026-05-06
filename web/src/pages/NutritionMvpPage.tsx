@@ -28,6 +28,7 @@ import {
   type MealLog,
   type MealType,
 } from "@/features/nutrition/data";
+import { buildHistoryCalendar, shiftMonthKey } from "@/features/nutrition/history-calendar";
 import {
   defaultNutritionSeed,
 } from "@/features/nutrition/local-nutrition-repo";
@@ -1069,7 +1070,6 @@ export default function NutritionMvpPage() {
         {screen === "history" ? (
           <HistoryScreen
             logs={logs}
-            businessDayLabel={businessDayLabel}
             onBack={() => setScreen("home")}
             onOpenHome={() => setScreen("home")}
             onOpenSelector={() => setScreen("selector")}
@@ -1430,7 +1430,7 @@ function HomeScreen({
         onDeleteLog={onDeleteLog}
       />
 
-      <BottomNav active="今日" onHome={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} onSettings={onOpenSettings} />
+      <BottomNav active="今日" onHome={undefined} onHistory={onOpenHistory} onAddRecord={onOpenSelector} />
     </div>
   );
 }
@@ -2466,18 +2466,18 @@ function DetailScreen({
 
 function HistoryScreen({
   logs,
-  businessDayLabel,
   onBack,
   onOpenHome,
   onOpenSelector,
 }: {
   logs: MealLog[];
-  businessDayLabel: string;
   onBack: () => void;
   onOpenHome: () => void;
   onOpenSelector: () => void;
 }) {
   const [mode, setMode] = useState<'day' | 'week'>('day');
+  const nowIso = formatLocalIso();
+  const timezoneSuffix = nowIso.match(/([+-]\d\d:\d\d|Z)$/)?.[1] ?? "Z";
   const dailySummaries = useMemo(() => {
     const map = new Map<string, ReturnType<typeof summarizeBusinessDay>>();
     for (const log of logs) {
@@ -2488,18 +2488,24 @@ function HistoryScreen({
     }
     return [...map.values()].sort((a, b) => b.businessDayKey.localeCompare(a.businessDayKey));
   }, [logs]);
+  const dailySummaryMap = useMemo(() => new Map(dailySummaries.map((day) => [day.businessDayKey, day])), [dailySummaries]);
+  const currentDay = dailySummaries[0] ?? summarizeBusinessDay([], nowIso);
+  const [visibleMonthKey, setVisibleMonthKey] = useState(currentDay.businessDayKey.slice(0, 7));
+  const [selectedBusinessDayKey, setSelectedBusinessDayKey] = useState(currentDay.businessDayKey);
 
-  const currentDay = dailySummaries[0] ?? summarizeBusinessDay([], formatLocalIso());
+  useEffect(() => {
+    if (!selectedBusinessDayKey || (!dailySummaryMap.has(selectedBusinessDayKey) && !selectedBusinessDayKey.startsWith(visibleMonthKey))) {
+      setSelectedBusinessDayKey(currentDay.businessDayKey);
+    }
+  }, [currentDay.businessDayKey, dailySummaryMap, selectedBusinessDayKey, visibleMonthKey]);
+
+  useEffect(() => {
+    if (!visibleMonthKey) {
+      setVisibleMonthKey(currentDay.businessDayKey.slice(0, 7));
+    }
+  }, [currentDay.businessDayKey, visibleMonthKey]);
+
   const recentDays = dailySummaries.slice(0, 7);
-  const currentTotals = currentDay.filteredLogs.reduce(
-    (acc, log) => {
-      acc.calories += log.food.calories;
-      acc.protein += log.food.protein;
-      acc.carbs += log.food.carbs;
-      return acc;
-    },
-    { calories: 0, protein: 0, carbs: 0 },
-  );
   const weekTotals = recentDays.reduce(
     (acc, day) => {
       acc.calories += day.filteredLogs.reduce((sum, log) => sum + log.food.calories, 0);
@@ -2509,11 +2515,46 @@ function HistoryScreen({
     },
     { calories: 0, protein: 0, carbs: 0 },
   );
-  const grouped = currentDay.filteredLogs.reduce<Record<string, MealLog[]>>((acc, log) => {
+  const calendar = useMemo(
+    () => buildHistoryCalendar({
+      visibleMonthKey,
+      summaries: dailySummaries.map((day) => ({
+        businessDayKey: day.businessDayKey,
+        calories: day.filteredLogs.reduce((sum, log) => sum + log.food.calories, 0),
+        totalCount: day.totalCount,
+      })),
+      selectedBusinessDayKey,
+    }),
+    [dailySummaries, selectedBusinessDayKey, visibleMonthKey],
+  );
+  const selectedReferenceIso = `${selectedBusinessDayKey}T12:00:00${timezoneSuffix}`;
+  const selectedDay = dailySummaryMap.get(selectedBusinessDayKey) ?? summarizeBusinessDay(logs, selectedReferenceIso);
+  const selectedTotals = selectedDay.filteredLogs.reduce(
+    (acc, log) => {
+      acc.calories += log.food.calories;
+      acc.protein += log.food.protein;
+      acc.carbs += log.food.carbs;
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0 },
+  );
+  const selectedGrouped = selectedDay.filteredLogs.reduce<Record<string, MealLog[]>>((acc, log) => {
     const key = log.mealType;
     acc[key] = acc[key] ? [...acc[key], log] : [log];
     return acc;
   }, {});
+  const selectedLabel = deriveBusinessDayLabel({
+    businessDayKey: selectedDay.businessDayKey,
+    nowIso,
+    carryOverCount: selectedDay.carryOverCount,
+  });
+  const visibleMonthRecordedCount = dailySummaries.filter((day) => day.businessDayKey.startsWith(visibleMonthKey)).length;
+  const changeMonth = (delta: number) => {
+    const nextMonthKey = shiftMonthKey(visibleMonthKey, delta);
+    setVisibleMonthKey(nextMonthKey);
+    const firstDayWithLog = dailySummaries.find((day) => day.businessDayKey.startsWith(nextMonthKey));
+    setSelectedBusinessDayKey(firstDayWithLog?.businessDayKey ?? `${nextMonthKey}-01`);
+  };
 
   return (
     <div className="space-y-4 text-[#1F1F1C]">
@@ -2527,7 +2568,7 @@ function HistoryScreen({
       <div className="rounded-[26px] bg-white p-4 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
         <div className="grid grid-cols-2 gap-2 rounded-[18px] bg-[#F7F5F0] p-1">
           <button onClick={() => setMode('day')} className={cn('rounded-[14px] px-3 py-2 text-sm font-medium', mode === 'day' ? 'bg-white text-[#1F1F1C] shadow-sm' : 'text-[#615D59]')}>
-            日視圖
+            月曆
           </button>
           <button onClick={() => setMode('week')} className={cn('rounded-[14px] px-3 py-2 text-sm font-medium', mode === 'week' ? 'bg-white text-[#1F1F1C] shadow-sm' : 'text-[#615D59]')}>
             週摘要
@@ -2535,43 +2576,107 @@ function HistoryScreen({
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-3">
-          <EstimateTile label={mode === 'day' ? `${businessDayLabel}熱量` : '近 7 天平均'} value={`${mode === 'day' ? currentTotals.calories : Math.round(weekTotals.calories / Math.max(recentDays.length, 1))} kcal`} />
-          <EstimateTile label="蛋白質" value={`${mode === 'day' ? currentTotals.protein : Math.round((weekTotals.protein / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
-          <EstimateTile label="碳水" value={`${mode === 'day' ? currentTotals.carbs : Math.round((weekTotals.carbs / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
+          <EstimateTile label={mode === 'day' ? `${selectedLabel}熱量` : '近 7 天平均'} value={`${mode === 'day' ? selectedTotals.calories : Math.round(weekTotals.calories / Math.max(recentDays.length, 1))} kcal`} />
+          <EstimateTile label="蛋白質" value={`${mode === 'day' ? selectedTotals.protein : Math.round((weekTotals.protein / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
+          <EstimateTile label="碳水" value={`${mode === 'day' ? selectedTotals.carbs : Math.round((weekTotals.carbs / Math.max(recentDays.length, 1)) * 10) / 10} g`} />
         </div>
 
         <div className="mt-4 rounded-[20px] bg-[#EEF7F0] px-4 py-3 text-sm text-[#3F7850]">
-          {mode === 'day' ? `目前用凌晨 4 點切日，${businessDayLabel}的紀錄會更符合晚睡習慣。` : '近 7 天先看趨勢，不用被單日波動影響。'}
+          {mode === 'day' ? `${calendar.monthLabel} 有 ${visibleMonthRecordedCount} 天有紀錄，點日期就能直接看當天內容。` : '近 7 天先看趨勢，不用被單日波動影響。'}
         </div>
 
         {mode === 'day' ? (
-          <div className="mt-4 space-y-3">
-            {Object.entries(grouped).length ? (
-              Object.entries(grouped).map(([mealType, items]) => (
-                <div key={mealType} className="rounded-[20px] bg-[#F7F5F0] p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-[#1F1F1C]">{mealType}</div>
-                    <div className="text-xs text-[#615D59]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</div>
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {items.map((log) => (
-                      <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-white px-3 py-3">
-                        <div className="grid h-10 w-10 place-items-center rounded-2xl bg-[#F7F5F0]">
-                          <FoodEmoji category={log.food.category} />
+          <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <button onClick={() => changeMonth(-1)} className="rounded-full bg-[#F7F5F0] px-3 py-2 text-sm text-[#615D59]">上月</button>
+              <div className="text-sm font-semibold text-[#1F1F1C]">{calendar.monthLabel}</div>
+              <button onClick={() => changeMonth(1)} className="rounded-full bg-[#F7F5F0] px-3 py-2 text-sm text-[#615D59]">下月</button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-2 text-center text-[11px] text-[#8A847D]">
+              {['日', '一', '二', '三', '四', '五', '六'].map((weekday) => (
+                <div key={weekday}>{weekday}</div>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              {calendar.weeks.map((week, weekIndex) => (
+                <div key={`week-${weekIndex}`} className="grid grid-cols-7 gap-2">
+                  {week.map((cell, cellIndex) => {
+                    if (!cell) {
+                      return <div key={`empty-${weekIndex}-${cellIndex}`} className="h-[68px] rounded-[18px] bg-transparent" />;
+                    }
+
+                    const toneClass = cell.calories >= 1000
+                      ? 'bg-[#2FA56F] text-white'
+                      : cell.calories >= 500
+                        ? 'bg-[#D9F0E2] text-[#1F1F1C]'
+                        : cell.totalCount > 0
+                          ? 'bg-[#EEF7F0] text-[#1F1F1C]'
+                          : 'bg-[#F7F5F0] text-[#8A847D]';
+
+                    return (
+                      <button
+                        key={cell.businessDayKey}
+                        onClick={() => setSelectedBusinessDayKey(cell.businessDayKey)}
+                        className={cn(
+                          'h-[68px] rounded-[18px] px-2 py-2 text-left transition ring-1 ring-transparent',
+                          toneClass,
+                          cell.isSelected ? 'ring-[#2FA56F] ring-2 shadow-[0_8px_18px_rgba(47,165,111,0.16)]' : undefined,
+                        )}
+                      >
+                        <div className="text-sm font-semibold">{cell.dayNumber}</div>
+                        <div className={cn('mt-1 text-[11px]', cell.calories >= 1000 ? 'text-white/90' : 'text-[#615D59]')}>
+                          {cell.totalCount ? `${cell.totalCount} 筆` : '未記錄'}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
-                          <div className="truncate text-xs text-[#615D59]">{log.food.serving}</div>
+                        <div className={cn('text-[11px]', cell.calories >= 1000 ? 'text-white/90' : 'text-[#615D59]')}>
+                          {cell.calories ? `${cell.calories} kcal` : '—'}
                         </div>
-                        <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
-                      </div>
-                    ))}
-                  </div>
+                      </button>
+                    );
+                  })}
                 </div>
-              ))
-            ) : (
-              <div className="rounded-[20px] bg-[#F7F5F0] px-4 py-4 text-sm leading-6 text-[#615D59]">這個 {businessDayLabel} 還沒有紀錄。</div>
-            )}
+              ))}
+            </div>
+
+            <div className="rounded-[22px] bg-[#F7F5F0] p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#1F1F1C]">{selectedLabel}</div>
+                  <div className="mt-1 text-xs text-[#615D59]">{selectedDay.totalCount} 筆紀錄{selectedDay.carryOverCount ? ` ・ 含 ${selectedDay.carryOverCount} 筆凌晨` : ''}</div>
+                </div>
+                <div className="text-sm font-semibold text-[#1F1F1C]">{selectedTotals.calories} kcal</div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {Object.entries(selectedGrouped).length ? (
+                  Object.entries(selectedGrouped).map(([mealType, items]) => (
+                    <div key={mealType} className="rounded-[18px] bg-white p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-semibold text-[#1F1F1C]">{mealType}</div>
+                        <div className="text-xs text-[#615D59]">{items.reduce((sum, item) => sum + item.food.calories, 0)} kcal</div>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {items.map((log) => (
+                          <div key={log.id} className="flex items-center gap-3 rounded-[16px] bg-[#F7F5F0] px-3 py-3">
+                            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-white">
+                              <FoodEmoji category={log.food.category} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-semibold text-[#1F1F1C]">{log.food.name}</div>
+                              <div className="truncate text-xs text-[#615D59]">{log.food.serving}</div>
+                            </div>
+                            <div className="text-sm font-semibold text-[#1F1F1C]">{log.food.calories} kcal</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[18px] bg-white px-4 py-4 text-sm leading-6 text-[#615D59]">這天還沒有紀錄，之後點這格就能快速回看。</div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -2593,15 +2698,15 @@ function HistoryScreen({
           </div>
         )}
       </div>
-      <BottomNav active="歷史" onHome={onOpenHome} onHistory={undefined} onAddRecord={onOpenSelector} onSettings={onBack} />
+      <BottomNav active="歷史" onHome={onOpenHome} onHistory={undefined} onAddRecord={onOpenSelector} />
     </div>
   );
 }
 
-export function BottomNav({ active, onHome, onHistory, onAddRecord, onSettings }: { active: "今日" | "歷史"; onHome?: () => void; onHistory?: () => void; onAddRecord?: () => void; onSettings?: () => void }) {
+export function BottomNav({ active, onHome, onHistory, onAddRecord }: { active: "今日" | "歷史"; onHome?: () => void; onHistory?: () => void; onAddRecord?: () => void }) {
   return (
     <div className="rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(31,31,28,0.08)] ring-1 ring-black/5">
-      <div className="grid grid-cols-4 items-end text-center text-[11px] text-[#615D59]">
+      <div className="grid grid-cols-3 items-end text-center text-[11px] text-[#615D59]">
         <button onClick={onHome} className={cn("grid justify-items-center gap-1", active === "今日" ? "text-[#2FA56F]" : undefined)}>
           <House className="h-4 w-4" />
           今日
@@ -2615,10 +2720,6 @@ export function BottomNav({ active, onHome, onHistory, onAddRecord, onSettings }
         <button onClick={onHistory} className={cn("grid justify-items-center gap-1", active === "歷史" ? "text-[#2FA56F]" : undefined)}>
           <ChartColumn className="h-4 w-4" />
           歷史
-        </button>
-        <button onClick={onSettings} className="grid justify-items-center gap-1">
-          <Star className="h-4 w-4" />
-          我的
         </button>
       </div>
     </div>
